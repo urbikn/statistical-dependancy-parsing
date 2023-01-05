@@ -13,46 +13,71 @@ class FeatureMapping:
             'hpos': self.__get_hpos,
             'dform': self.__get_dform,
             'dpos': self.__get_dpos,
+            'hform, dpos': self.__get_hform_dpos,
+            'hpos, dform': self.__get_hpos_dform,
         }
         self.frozen = False
 
-    # Feature extractor functions
-    def __get_hform(self, sentence, index) -> str:
-        head_index = sentence.iloc[index]['head'] - 1
+        # Used during training as next index for new added features
+        self.feature_current_index = {feature_name:1 for feature_name in self.feature_extractors.keys()}
 
-        if head_index >= 0:
-            form = sentence.iloc[head_index]['form']
-        else:
-            form = 'ROOT'
+    # Feature extractor functions
+    # ====
+    def __get_hform(self, sentence, index) -> str:
+        try:
+            head_index = sentence[index]['head']
+        except:
+            print(head_index)
+        form = 'ROOT' if head_index == 0 else sentence[head_index]['form']
 
         return form
 
     def __get_hpos(self, sentence, index) -> str:
-        head_index = sentence.iloc[index]['head'] - 1
-        if head_index >= 0:
-            pos = sentence.iloc[head_index]['pos']
-        else:
-            pos = 'ROOT'
+        head_index = sentence[index]['head']
+        pos = 'ROOT' if head_index == 0 else sentence[head_index]['pos']
 
         return pos
 
     def __get_dform(self, sentence, index) -> str:
-        form = sentence.iloc[index]['form']
+        form = sentence[index]['form']
         return form
 
     def __get_dpos(self, sentence, index) -> str:
-        pos = sentence.iloc[index]['pos']
+        pos = sentence[index]['pos']
         return pos
-    
+
+    def __get_hform_dpos(self, sentence, index) -> str:
+        hform = self.__get_hform(sentence, index)
+        dpos = self.__get_dpos(sentence, index)
+
+        return f'{hform}+{dpos}'
+
+    def __get_hpos_dform(self, sentence, index) -> str:
+        hpos = self.__get_hpos(sentence, index)
+        dform = self.__get_dform(sentence, index)
+
+        return f'{hpos}+{dform}'
+    # ====
+
 
     def get(self, sentence: ConllSentence) -> np.ndarray:
         features = []
         # indexes should be dependants (so look at who the head is)
-        for i, row in sentence.iterrows():
+        for i in range(len(sentence)):
             feature = []
-            for name, extractor_funct in self.feature_extractors.items():
-                val = extractor_funct(sentence, i)
-                feature.append(f'{name}: {str(val)}')
+            for name, func in self.feature_extractors.items():
+                # Indexes are set to 1
+                value = func(sentence, i + 1)
+                name_value = f'{name}: {str(value)}'
+
+                if not self.frozen and name_value not in self.feature:
+                    # Set index for feature
+                    self.feature[name_value] = self.feature_current_index[name]
+                    # incremenet tempalate feature index
+                    self.feature_current_index[name] += 1
+
+                index = self.feature[name_value]
+                feature.append(index)
 
             features.append(feature)
 
@@ -61,8 +86,12 @@ class FeatureMapping:
 if __name__ == '__main__':
     original_file = '../data/wsj_dev.conll06.pred'
     conll_dataset = ConllDataset(original_file)
-    sentence = conll_dataset[0].sentence
-
     feature = FeatureMapping()
 
+    for i in range(100):
+        sentence = conll_dataset[i]
+        feature.get(sentence)
+
+    sentence = conll_dataset[100]
+    feature.frozen
     pprint(feature.get(sentence))

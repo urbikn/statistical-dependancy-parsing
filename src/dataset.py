@@ -6,9 +6,13 @@ class ConllSentence():
 
     def __init__(self, dataframe):
         self.sentence = dataframe
+        self.sentence.set_index('id', inplace=True)
+
+    def __len__(self):
+        return len(self.sentence)
 
     def __getitem__(self, key):
-        item = self.sentence.iloc[key]
+        item = self.sentence.loc[key]
         return item
     
 
