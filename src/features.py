@@ -18,8 +18,9 @@ class FeatureMapping:
         }
         self.frozen = False
 
+        # TODO: You can also try using just feature indexes
         # Used during training as next index for new added features
-        self.feature_current_index = {feature_name:1 for feature_name in self.feature_extractors.keys()}
+        # self.feature_current_index = {feature_name:1 for feature_name in self.feature_extractors.keys()}
 
     # Feature extractor functions
     # ====
@@ -72,9 +73,10 @@ class FeatureMapping:
 
                 if not self.frozen and name_value not in self.feature:
                     # Set index for feature
-                    self.feature[name_value] = self.feature_current_index[name]
+                    self.feature[name_value] += len(self.feature)
                     # incremenet tempalate feature index
-                    self.feature_current_index[name] += 1
+                    #self.feature[name_value] = self.feature_current_index[name]
+                    #self.feature_current_index[name] += 1
 
                 index = self.feature[name_value]
                 feature.append(index)
@@ -88,6 +90,20 @@ if __name__ == '__main__':
     conll_dataset = ConllDataset(original_file)
     feature = FeatureMapping()
 
+    # First sanity check
+    # 1) Get all indexes from 1 to d-1
+    sentence = conll_dataset[0]
+    print('Check if indexes 1 to d-1 used and unique')
+    feature_dict = feature.feature
+    if list(feature_dict.values()) == list(set(feature_dict.values())):
+        print('YES')
+    else:
+        print(feature_dict.values())
+        print('NO')
+
+
+    print('\nTrain on multiple sentences and get final feature')
+    feature = FeatureMapping()
     for i in range(100):
         sentence = conll_dataset[i]
         feature.get(sentence)
