@@ -54,6 +54,8 @@ class CLE():
                 if head == node:
                     # Return path of cycle with their head:dep connections
                     return {head:dep for head, dep in zip(path, path[1:] + [node])}
+                elif head in path: # A way to break out if we get into an infinite loop
+                    break
                 
                 path.append(head)
         
@@ -117,15 +119,14 @@ class CLE():
         cycle = self.__find_cycle(max_index_pairs)
 
         if cycle == None:
+            print(max_index_pairs)
             return max_index_pairs
         else:
+            print('cycle')
+            print(cycle)
             new_graph = self.__resolve(graph, cycle)
 
             y = self.__decode_graph(new_graph)
-
-            y  = {d:h for h,d in y.items()}
-            # TODO: SHIFT
-            print(y)
 
             return self.__resolve_cycle(y, cycle)
 
@@ -161,8 +162,15 @@ if __name__ == '__main__':
         [-np.Inf,5,20,-np.Inf]
     ])
 
-
-
-
     cle = CLE()
+    print(cle.decode(scores))
+
+    # Test with random
+    scores = np.random.randint(0, 30, (10,10)).astype(float)
+    scores[:, 0] = -np.Inf
+    scores[np.diag_indices_from(scores)] = -np.Inf
+
+    # TODO: Still getting an error here, where when returning from resolve_cycle, I'm getting back a list
+    # instead of a dictionary
+    print(scores)
     print(cle.decode(scores))

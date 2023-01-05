@@ -1,18 +1,21 @@
 import csv
-import datasets
 import pandas as pd
 
 class ConllSentence():
+    column_names = ['id', 'form', 'lemma', 'pos', 'xpos', 'morph.', 'head', 'rel', 'deps', 'misc']
+
     def __init__(self, dataframe):
         self.sentence = dataframe
 
     def __getitem__(self, key):
-        return self.sentence.iloc[key]
+        item = self.sentence.iloc[key]
+        return item
     
 
 class ConllDataset():
     ROOT_TOKEN = 0
-    column_names = ['ID', 'FORM', 'LEMMA', 'POS', 'XPOS', 'MORPH.', 'HEAD', 'REL', 'DEPS', 'MISC']
+    column_names = ['id', 'form', 'lemma', 'pos', 'xpos', 'morph.', 'head', 'rel', 'deps', 'misc']
+    
 
     def __init__(self, filepath, delimiter='\t', has_column=False):
         self.has_column_names = has_column
@@ -40,6 +43,7 @@ class ConllDataset():
 
         sentence_dataframe = self.dataset[begin_index: end_index]
         sentence = ConllSentence(sentence_dataframe)
+
         return sentence
 
     def __len__(self):

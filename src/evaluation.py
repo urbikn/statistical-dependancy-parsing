@@ -11,8 +11,8 @@ def uas(gold, prediction):
     match_count = 0
     total_count = 0
     for gold_sentence, prediction_sentence in zip(gold, prediction):
-        gold_heads = gold_sentence.sentence['HEAD'].to_numpy()
-        prediction_heads = prediction_sentence.sentence['HEAD'].to_numpy()
+        gold_heads = gold_sentence.sentence['head'].to_numpy()
+        prediction_heads = prediction_sentence.sentence['head'].to_numpy()
 
         count = sum(gold_heads == prediction_heads)
         match_count += count
@@ -30,8 +30,8 @@ def las(gold, prediction):
     match_count = 0
     total_count = 0
     for gold_sentence, prediction_sentence in zip(gold, prediction):
-        gold_val = gold_sentence.sentence[['HEAD', 'REL']].to_numpy()
-        pred_val = prediction_sentence.sentence[['HEAD', 'REL']].to_numpy()
+        gold_val = gold_sentence.sentence[['head', 'rel']].to_numpy()
+        pred_val = prediction_sentence.sentence[['head', 'rel']].to_numpy()
 
         total_count += len(gold_val)
         matches = gold_val == pred_val
