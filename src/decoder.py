@@ -1,11 +1,14 @@
 import numpy as np
+from pprint import pprint
+import copy
 
 class CLE():
     """Class implements the graph-based parsing algorithm Chu-Liu-Edmonds.
     """
 
-    def __init__(self, inf=np.inf):
+    def __init__(self, verbose=False, inf=np.inf):
         self.__INF = inf
+        self.verbose = verbose
         
 
     def __find_max_pairs(self, graph):
@@ -68,6 +71,23 @@ class CLE():
         sum_cycle_scores = sum([graph[head][dep] for head, dep in cycle.items()])
         cycle_scores = {head:(sum_cycle_scores - graph[dep][head]) for head, dep in cycle.items()}
 
+        # Update scores on old graph
+        for node, arcs in graph.items():
+            # Skip nodes that will be turned into a new node
+            if node in cycle_scores:
+                continue
+
+            for n in arcs.keys():
+                if n in cycle_scores:
+                    arcs[n] += cycle_scores[n]
+        if self.verbose:
+            print('[resolve] New updated graph:')
+            pprint(graph)
+
+
+        if self.verbose:
+            print('[resolve] Starting to create new graph.')
+
         # index that will represent the newly created node
         cycle_node_index = min(cycle_scores.keys())
         new_graph = {}
@@ -75,19 +95,19 @@ class CLE():
             new_nodes = graph[node].copy()
 
             max_node_val = -1
-            for n in list(new_nodes.keys()):
+            for arc in list(new_nodes.keys()):
                 # Get the largest value as connection to new node
-                if n in cycle_scores:
-                    val = new_nodes[n] + cycle_scores[n]
-                    if val > max_node_val:
-                        max_node_val = val
+                if arc in cycle_scores:
+                    score = new_nodes.pop(arc)
 
-                    new_nodes.pop(n)
+                    if max_node_val < score:
+                        max_node_val = score
 
-                if max_node_val >= 0:
-                    new_nodes[cycle_node_index] = max_node_val
 
-            new_graph[node]  = new_nodes
+            if max_node_val >= 0:
+                new_nodes[cycle_node_index] = max_node_val
+
+            new_graph[node] = new_nodes
 
 
         new_node = {}
@@ -101,34 +121,93 @@ class CLE():
                 elif n not in new_node or new_node[n] < arcs[n]:
                     new_node[n] = arcs[n]
 
-
         new_graph[cycle_node_index] = new_node
-        return new_graph
+        if self.verbose:
+            print('[resolve] New created graph:')
+            pprint(new_graph)
+
+
+        return graph, new_graph
 
     def __resolve_cycle(self, new_graph, cycle):
         for node_c in cycle.keys():
-            for node_g in new_graph.keys():
-                if cycle[node_c] == new_graph[node_g]:
+            for head_g, dep_g in new_graph:
+                if cycle[node_c] == dep_g:
                     cycle = [[h,d] for h, d in cycle.items() if h != node_c]
-                    return [[h,d] for h, d in new_graph.items()] + cycle
+                    resolved_graph = new_graph + cycle
+                    if self.verbose:
+                        print('[resolve cycle] Resolved cycle', cycle)
+                        print('[resolve cycle] Resolved graph')
+                        pprint(resolved_graph)
+
+                    return resolved_graph
+
+    def __resolve_node(self, old_graph, new_graph, old_cycle, index_pairs):
+        resolved_index_pairs = copy.deepcopy(index_pairs)
+
+        # Resolve dep nodes
+        for i, (head_node, dep_node) in enumerate(index_pairs):
+            new_score = new_graph[head_node][dep_node]
+
+            for old_dep_node, old_score in old_graph[head_node].items():
+                # Second condition used in scenario that the old_graph's head_node
+                # Contained the same value as one that's inside the cycle
+                # === As you can probably guess, this is a  product of debugging
+                if new_score == old_score and old_dep_node not in old_cycle:
+                    resolved_index_pairs[i][1] = old_dep_node
+                    break
+
+        # Resolve head nodes
+        for i, (head_node, dep_node) in enumerate(index_pairs):
+            # First see if the head_node was the one from the cycle (meaning it was
+            # reduced to the head_node index)
+            if head_node in old_cycle:
+                #if dep_node not in new_graph[head_node]
+                new_score = new_graph[head_node][dep_node]
+                # Get all nodes in cycle and try to find the one that was used
+                # for the new graph
+                for cycle_nodes in old_cycle.keys():
+                    # .get() in case the score doesn't even exist in the node
+                    old_score = old_graph[cycle_nodes].get(dep_node, -1)
+                    if new_score == old_score:
+                        resolved_index_pairs[i][0] = cycle_nodes
+                        break
+
+        return resolved_index_pairs
 
 
     def __decode_graph(self, graph):
         max_index_pairs = self.__find_max_pairs(graph)
+        if self.verbose:
+            print('[decode] Max index pairs:', max_index_pairs)
 
         cycle = self.__find_cycle(max_index_pairs)
+        if self.verbose:
+            print('[decode] Cycle found:', cycle)
 
         if cycle == None:
-            print(max_index_pairs)
-            return max_index_pairs
+            if self.verbose:
+                print('[decode] No cycle found. Returning max index pairs.')
+
+            return [[h,d] for d, h in max_index_pairs.items()]
         else:
-            print('cycle')
-            print(cycle)
-            new_graph = self.__resolve(graph, cycle)
+            old_graph, new_graph = self.__resolve(graph, cycle)
 
-            y = self.__decode_graph(new_graph)
+            y = self.__decode_graph(copy.deepcopy(new_graph))
+            if self.verbose:
+                print('[decode] New graph')
+                pprint(y)
 
-            return self.__resolve_cycle(y, cycle)
+            y_resolved = self.__resolve_node(old_graph, new_graph, cycle, y)
+            if self.verbose:
+                print('[decode] New (resolved) graph')
+                pprint(y_resolved)
+
+            try:
+                return self.__resolve_cycle(y_resolved, cycle)
+            except Exception as e:
+                print(y_resolved)
+                raise e
 
 
     def decode(self, scores):
@@ -138,39 +217,73 @@ class CLE():
         
 
 if __name__ == '__main__':
-    # [[0, 1], [1, 3], [1, 2]]
-    scores = np.array([
-        [-np.Inf,9,10,9],
-        [-np.Inf,-np.Inf,20,3],
-        [-np.Inf,30,-np.Inf,30],
-        [-np.Inf,11,0,-np.Inf]
-    ])
+    def test1():
+        scores = np.array([
+            [-np.Inf,9,10,9],
+            [-np.Inf,-np.Inf,20,3],
+            [-np.Inf,30,-np.Inf,30],
+            [-np.Inf,11,0,-np.Inf]
+        ])
+        answer = [[2, 3], [0, 2], [2, 1]]
+
+        cle = CLE()
+        output = cle.decode(scores)
+
+        if output != answer:
+            print('Test 1 failed')
+            return False
+        
+        return True
+
+    def test2():
+        scores = np.array([
+            [-np.Inf, 3, 10, 5],
+            [-np.Inf, -np.Inf, 1, 10],
+            [-np.Inf, 10, -np.Inf, 8],
+            [-np.Inf, 20, 5, -np.Inf],
+        ])
+        answer =  [[0, 2], [2, 3], [3, 1]]
+
+        cle = CLE()
+        output = cle.decode(scores)
+
+        if output != answer:
+            print('Test 2 failed')
+            return False
+        
+        return True
 
 
-    scores = np.array([
-        [-np.Inf, 10, 5, 15],
-        [-np.Inf, -np.Inf, 20, 15],
-        [-np.Inf, 25, -np.Inf, 25],
-        [-np.Inf, 30, 10, -np.Inf]
-    ])
+    def test3():
+        scores = np.random.randint(0, 30, (10,10)).astype(float)
+        scores[:, 0] = -np.Inf
+        scores[np.diag_indices_from(scores)] = -np.Inf
 
-    # [[0, 1], [1, 2], [2, 3]]
-    scores = np.array([
-        [-np.Inf,10,3,5],
-        [-np.Inf,-np.Inf,10,8],
-        [-np.Inf,1,-np.Inf,10],
-        [-np.Inf,5,20,-np.Inf]
-    ])
+        cle = CLE()
+        output = cle.decode(scores)
+        if output == None:
+            print('Test 3 failed')
+            return False
+        
+        return True
 
-    cle = CLE()
-    print(cle.decode(scores))
+    def test4():
+        for i in range(100):
+            scores = np.random.randint(0, 30, (10,10)).astype(float)
+            scores[:, 0] = -np.Inf
+            scores[np.diag_indices_from(scores)] = -np.Inf
 
-    # Test with random
-    scores = np.random.randint(0, 30, (10,10)).astype(float)
-    scores[:, 0] = -np.Inf
-    scores[np.diag_indices_from(scores)] = -np.Inf
+            try:
+                cle = CLE()
+                cle.decode(scores)
+            except:
+                print('Test 3 failed')
+                return False
+        
+        return True
 
-    # TODO: Still getting an error here, where when returning from resolve_cycle, I'm getting back a list
-    # instead of a dictionary
-    print(scores)
-    print(cle.decode(scores))
+    for test in [test1, test2, test3, test4]:
+        if not test():
+            exit
+        
+    print('All tests run successfully')
