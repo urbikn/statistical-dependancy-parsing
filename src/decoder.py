@@ -141,6 +141,10 @@ class CLE():
                         pprint(resolved_graph)
 
                     return resolved_graph
+        
+        if self.verbose:
+            print('[resolve cycle] No resolution')
+        return new_graph
 
     def __resolve_node(self, old_graph, new_graph, old_cycle, index_pairs):
         resolved_index_pairs = copy.deepcopy(index_pairs)
@@ -152,8 +156,11 @@ class CLE():
             for old_dep_node, old_score in old_graph[head_node].items():
                 # Second condition used in scenario that the old_graph's head_node
                 # Contained the same value as one that's inside the cycle
+                # Or that the dep_node itself is in the cycle, 
+                # then we swap with one in the cycle
                 # === As you can probably guess, this is a  product of debugging
-                if new_score == old_score and old_dep_node not in old_cycle:
+                if new_score == old_score and \
+                   (old_dep_node not in old_cycle or dep_node in old_cycle):
                     resolved_index_pairs[i][1] = old_dep_node
                     break
 
@@ -166,11 +173,11 @@ class CLE():
                 new_score = new_graph[head_node][dep_node]
                 # Get all nodes in cycle and try to find the one that was used
                 # for the new graph
-                for cycle_nodes in old_cycle.keys():
+                for cycle_node in old_cycle.keys():
                     # .get() in case the score doesn't even exist in the node
-                    old_score = old_graph[cycle_nodes].get(dep_node, -1)
+                    old_score = old_graph[cycle_node].get(dep_node, -1)
                     if new_score == old_score:
-                        resolved_index_pairs[i][0] = cycle_nodes
+                        resolved_index_pairs[i][0] = cycle_node
                         break
 
         return resolved_index_pairs
