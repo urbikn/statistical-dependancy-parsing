@@ -78,16 +78,16 @@ class FeatureMapping:
 
             features.append(feature)
 
-        return np.array(features)
+        return np.asarray(features, dtype=object)
 
-    def get_permutations(self, sentence: ConllSentence) -> np.ndarray:
+    def get_permutations(self, sentence: ConllSentence, default=0) -> np.ndarray:
         '''Used for getting all possible arc features'''
         features = []
 
         for index_head in range(0, len(sentence) + 1):
-            feature = [np.zeros(self.feature_count(),dtype=int)]
+            feature = [np.full(self.feature_count(), default)]
             for index_dep in range(1, len(sentence) + 1):
-                f = np.zeros(self.feature_count(),dtype=int)
+                f = np.full(self.feature_count(), default)
 
                 if index_head != index_dep:
                     for i, (name, func) in enumerate(self.feature_extractors.items()):

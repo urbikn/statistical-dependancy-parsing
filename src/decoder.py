@@ -220,7 +220,7 @@ class CLE():
     def decode(self, scores):
         graph = self.__matrix_to_graph(scores)
 
-        return self.__decode_graph(graph)
+        return sorted(self.__decode_graph(graph))
         
 
 if __name__ == '__main__':

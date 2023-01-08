@@ -8,6 +8,12 @@ class ConllSentence():
         self.sentence = dataframe
         self.sentence.set_index('id', inplace=True)
 
+    def get_arcs(self):
+        heads = self.sentence['head'].to_list()
+        arcs = [[head, dep] for dep, head in enumerate(heads, start=1)]
+
+        return sorted(arcs)
+
     def __len__(self):
         return len(self.sentence)
 
