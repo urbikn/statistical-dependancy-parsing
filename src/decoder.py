@@ -268,7 +268,7 @@ if __name__ == '__main__':
 
         cle = CLE()
         output = cle.decode(scores)
-        if output == None:
+        if output == None or len(output) != scores.shape[0] - 1:
             print('Test 3 failed')
             return False
         

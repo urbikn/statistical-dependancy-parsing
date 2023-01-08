@@ -14,6 +14,7 @@ class ConllSentence():
     def __getitem__(self, key):
         item = self.sentence.loc[key]
         return item
+
     
 
 class ConllDataset():
