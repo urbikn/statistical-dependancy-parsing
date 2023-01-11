@@ -12,7 +12,8 @@ class ConllSentence():
         heads = self.sentence['head'].to_list()
         arcs = [[head, dep] for dep, head in enumerate(heads, start=1)]
 
-        return sorted(arcs)
+        # Sort by dependants
+        return sorted(arcs, key=lambda x: x[1])
 
     def __len__(self):
         return len(self.sentence)

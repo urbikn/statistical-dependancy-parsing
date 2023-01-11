@@ -39,7 +39,7 @@ class CLE():
         '''Transform adjacency matrix into dictionary, where V= {start node: {end node: cost}}'''
         graph = {}
         for i_start, row in enumerate(scores):
-            arcs = {i_end:score for i_end, score in enumerate(row) if score >= 0}
+            arcs = {i_end:score for i_end, score in enumerate(row) if score != -np.Inf}
 
             # Don't include nodes that have no connections
             if len(arcs) > 0:
@@ -94,7 +94,7 @@ class CLE():
         for node in graph.keys():
             new_nodes = graph[node].copy()
 
-            max_node_val = -1
+            max_node_val = -np.Inf
             for arc in list(new_nodes.keys()):
                 # Get the largest value as connection to new node
                 if arc in cycle_scores:
@@ -104,7 +104,7 @@ class CLE():
                         max_node_val = score
 
 
-            if max_node_val >= 0:
+            if max_node_val != -np.Inf:
                 new_nodes[cycle_node_index] = max_node_val
 
             new_graph[node] = new_nodes
@@ -220,7 +220,7 @@ class CLE():
     def decode(self, scores):
         graph = self.__matrix_to_graph(scores)
 
-        return sorted(self.__decode_graph(graph))
+        return self.__decode_graph(graph)
         
 
 if __name__ == '__main__':
@@ -276,7 +276,7 @@ if __name__ == '__main__':
 
     def test4():
         for i in range(100):
-            scores = np.random.randint(0, 30, (10,10)).astype(float)
+            scores = np.random.randint(0, 30, (100,100)).astype(float)
             scores[:, 0] = -np.Inf
             scores[np.diag_indices_from(scores)] = -np.Inf
 
