@@ -7,13 +7,12 @@ from src import decoder
 from src import evaluation
 
 class AveragePerceptron:
-    def __init__(self, dim) -> None:
-        weight_init = 20
-
-        self.weight = np.random.randint(0, weight_init, dim).astype('float')
+    def __init__(self, dim, weight_init=20) -> None:
+        self.weight = np.random.randint(-weight_init, weight_init, dim).astype('float')
         self.decoder = decoder.CLE()
+        self.bias = np.random.random()
 
-    def train(self, dataset, epoch=5, batch_n=128):
+    def train(self, dataset, epoch=5, batch_n=64, learning_rate=0.001):
         '''
             dataset: [x, true_features, true_arcs]
         '''
@@ -33,46 +32,57 @@ class AveragePerceptron:
                 batches.append(_batch)
             random.shuffle(batches)
 
-            for batch in tqdm(batches):
+            # for batch in tqdm(batches):
                 # Variables used for averaging the weights
-                cached_weight = np.zeros(self.weight.shape)
-                for x, true_features, y in batch:
-                    cached_weight = np.add(cached_weight, self.weight)
+            cached_weight = np.zeros(self.weight.shape)
+            # for x, true_features, y in batch:
+            for x, true_features, y in tqdm(dataset):
+                cached_weight = np.add(cached_weight, self.weight)
 
-                    scores = self.forward(x)
-                    scores[:, 0] = -np.inf
-                    scores[np.diag_indices_from(scores)] = -np.inf
+                scores = self.forward(x)
+                scores[:, 0] = -np.inf
+                scores[np.diag_indices_from(scores)] = -np.inf
 
-                    y_pred = self.decoder.decode(scores)
+                y_pred = self.decoder.decode(scores)
 
-                    # Sort just so it's easier to compare
-                    y.sort(key=lambda x: x[1])
-                    y_pred.sort(key=lambda x: x[1])
+                # Sort just so it's easier to compare
+                y.sort(key=lambda x: x[1])
+                y_pred.sort(key=lambda x: x[1])
 
-                    gold.append(y)
-                    predictions.append(y_pred)
+                gold.append(y)
+                predictions.append(y_pred)
 
-                    if y != y_pred:
-                        delta_weight = np.zeros(self.weight.shape, dtype=float)
+                if y != y_pred:
+                    delta_weight = np.zeros(self.weight.shape, dtype=float)
 
-                        for i, y_arc in enumerate(y):
-                            delta_weight = np.add(delta_weight, true_features[i])
-                        
-                        for i, y_pred_arc in enumerate(y_pred):
-                            head, dep = y_pred_arc
-                            delta_weight = np.subtract(delta_weight, x[head][dep])
-                        
 
-                        self.weight = np.add(self.weight, delta_weight)
+                    for i, y_arc in enumerate(y):
+                        delta_weight = np.add(delta_weight, true_features[i])
+                    
+                    for i, y_pred_arc in enumerate(y_pred):
+                        head, dep = y_pred_arc
+                        delta_weight = np.subtract(delta_weight, x[head][dep])
+                    
 
-                # Update weights with cached weights
-                self.weight = np.subtract(self.weight, (1/len(batch)) * cached_weight)
+                    self.weight = np.add(self.weight, learning_rate * delta_weight)
+
+            # Update weights with cached weights
+            self.weight = np.subtract(self.weight, (1/len(dataset)) * cached_weight)
             print('UAS:', evaluation.uas(gold, predictions))
 
         print('Finished training.')
 
+    def predict(self, instance):
+        scores = self.forward(instance)
+        scores[:, 0] = -np.inf
+        scores[np.diag_indices_from(scores)] = -np.inf
+
+        y_pred = self.decoder.decode(scores)
+        return y_pred
+
+
     def forward(self, x):
-        h = np.dot(x, self.weight) + 0.7
+        h = np.dot(x, self.weight) + self.bias
         return np.squeeze(h)
 
     @classmethod
