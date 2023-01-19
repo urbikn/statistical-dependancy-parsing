@@ -1,5 +1,6 @@
 import csv
 import pandas as pd
+import numpy as np
 
 class ConllSentence():
     column_names = ['id', 'form', 'lemma', 'pos', 'xpos', 'morph.', 'head', 'rel', 'deps', 'misc']

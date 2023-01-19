@@ -3,54 +3,98 @@ import pickle, gzip
 from collections import defaultdict
 import numpy as np
 
-from dataset import ConllSentence
-from dataset import ConllDataset
+from src.dataset import ConllSentence
+from src.dataset import ConllDataset
 
 
 class FeatureMapping:
     def __init__(self) -> None:
-        self.feature = defaultdict(int)
         self.feature_extractors = {
-            'hform': self.get_hform,
-            'hpos': self.get_hpos,
-            'dform': self.get_dform,
-            'dpos': self.get_dpos,
-            'hform, dpos': self.get_hform_dpos,
-            'hpos, dform': self.get_hpos_dform,
+            'hform': self.hform,
+            'hpos': self.hpos,
+            'dform': self.dform,
+            'dpos': self.dpos,
+            'hform, dpos': self.hform_dpos,
+            'hpos, dpos': self.hpos_dform,
+            'hform, dform': self.hform_dform,
+            'hpos, dpos': self.hpos_dpos,
+            'hform, hpos, dform, dpos': self.hformpos_dformpos,
+            'hform, hpos, dform': self.hformpos_dform,
+            'hform, hpos, dpos': self.hformpos_dpos,
+            'hform, dform, dpos': self.hform_dformpos,
+            'hpos, dform, dpos': self.hpos_dformpos,
         }
+
+        self.feature = {name:defaultdict(int) for name in self.feature_extractors.keys()}
         self.frozen = False
 
     # Feature extractor functions
     # ====
-    def get_hform(self, sentence, index_dep, index_head) -> str:
+    def hform(self, sentence, index_dep, index_head) -> str:
         form = 'ROOT' if index_head == 0 else sentence[index_head]['form']
 
         return form
 
-    def get_hpos(self, sentence, index_dep, index_head) -> str:
+    def hpos(self, sentence, index_dep, index_head) -> str:
         pos = 'ROOT' if index_head == 0 else sentence[index_head]['pos']
 
         return pos
 
-    def get_dform(self, sentence, index_dep, index_head) -> str:
+    def dform(self, sentence, index_dep, index_head) -> str:
         form = sentence[index_dep]['form']
         return form
 
-    def get_dpos(self, sentence, index_dep, index_head) -> str:
+    def dpos(self, sentence, index_dep, index_head) -> str:
         pos = sentence[index_dep]['pos']
         return pos
 
-    def get_hform_dpos(self, sentence, index_dep, index_head) -> str:
-        hform = self.get_hform(sentence, index_dep, index_head)
-        dpos = self.get_dpos(sentence, index_dep, index_head)
+    def hform_pos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hform(*params)}+{self.hpos(*params)}'
 
-        return f'{hform}+{dpos}'
+    def dform_pos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.dform(*params)}+{self.dpos(*params)}'
 
-    def get_hpos_dform(self, sentence, index_dep, index_head) -> str:
-        hpos = self.get_hpos(sentence, index_dep, index_head)
-        dform = self.get_dform(sentence, index_dep, index_head)
+    def hform_dpos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hform(*params)}+{self.dpos(*params)}',
 
-        return f'{hpos}+{dform}'
+    def hpos_dform(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hpos(*params)}+{self.dform(*params)}',
+
+    def hform_dform(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hform(*params)}+{self.dform(*params)}',
+
+    def hform_dform(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hform(*params)}+{self.dform(*params)}',
+
+    def hpos_dpos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hpos(*params)}+{self.dpos(*params)}',
+
+    def hformpos_dformpos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hform_pos(*params)}+{self.dform_pos(*params)}',
+
+    def hformpos_dform(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hform_pos(*params)}+{self.dform(*params)}',
+
+    def hformpos_dpos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hform_pos(*params)}+{self.dpos(*params)}',
+
+    def hform_dformpos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hform(*params)}+{self.dform_pos(*params)}',
+
+    def hpos_dformpos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hpos(*params)}+{self.dform_pos(*params)}',
     # ====
 
     def feature_count(self) -> int:
@@ -62,11 +106,11 @@ class FeatureMapping:
             value = func(sentence, index_dep, index_head)
             name_value = f'{name}: {str(value)}'
 
-            if not self.frozen and name_value not in self.feature:
+            if not self.frozen and name_value not in self.feature[name]:
                 # Set index for feature
-                self.feature[name_value] += len(self.feature)
+                self.feature[name][name_value] += len(self.feature[name])
 
-            index = self.feature[name_value]
+            index = self.feature[name][name_value]
             feature.append(index)
 
         return feature
@@ -122,6 +166,9 @@ class FeatureMapping:
 
         return featmap
 
+from multiprocessing import Process
+from multiprocessing import Pool
+
 
 
 if __name__ == '__main__':
@@ -135,11 +182,13 @@ if __name__ == '__main__':
     print('Check if indexes 1 to d-1 used and unique')
     val = feature.get(sentence)
     feature_dict = feature.feature
-    if list(feature_dict.values()) == list(set(feature_dict.values())):
-        print('YES')
-    else:
-        print(feature_dict.values())
-        print('NO')
+
+    if None:
+        if list(feature_dict[keys[0]].values()) == list(set(feature_dict[keys[0]].values())):
+            print('YES')
+        else:
+            print(feature_dict.values())
+            print('NO')
 
 
     print('\nTrain on multiple sentences and get final feature')
@@ -150,6 +199,10 @@ if __name__ == '__main__':
 
     sentence = conll_dataset[23]
     feature.frozen = True
-    features = feature.get_permutations(sentence)
-    print(features.shape)
-    pprint(features)
+
+    print('Pool')
+    pool_dataset = [conll_dataset[i] for i in range(10)]
+    with Pool(16) as pool:
+        features = pool.map(feature.get_permutations, pool_dataset)
+
+    pprint(len(features))

@@ -1,61 +1,88 @@
-import decoder
 import numpy as np
 import random
 from tqdm import tqdm
+import pickle, gzip
 
+from src import decoder
+from src import evaluation
 
-class Perceptron:
+class AveragePerceptron:
     def __init__(self, dim) -> None:
         weight_init = 20
 
-        self.weight = np.random.randint(0, weight_init, dim)
+        self.weight = np.random.randint(0, weight_init, dim).astype('float')
         self.decoder = decoder.CLE()
 
-    def train(self, dataset, epoch=5, alpha=0.01):
+    def train(self, dataset, epoch=5, batch_n=128):
         '''
             dataset: [x, true_features, true_arcs]
         '''
 
         print(f'Start training at {epoch} epochs')
+
         for e in range(epoch):
-            random.shuffle(dataset)
-            correct = 0
+            gold = []
+            predictions = []
 
-            for x, true_features, y in tqdm(dataset):
-                scores = self.forward(x)
-                scores[:, 0] = -np.inf
-                scores[np.diag_indices_from(scores)] = -np.inf
+            batches = []
+            for s in range(0, len(dataset), batch_n):
+                _batch = []
+                for i in range(s, s+batch_n):
+                    if i < len(dataset):
+                        _batch.append(dataset[i])
+                batches.append(_batch)
+            random.shuffle(batches)
 
-                y_pred = self.decoder.decode(scores)
+            for batch in tqdm(batches):
+                # Variables used for averaging the weights
+                cached_weight = np.zeros(self.weight.shape)
+                for x, true_features, y in batch:
+                    cached_weight = np.add(cached_weight, self.weight)
 
-                # Sort just so it's easier to compare
-                y.sort(key=lambda x: x[1])
-                y_pred.sort(key=lambda x: x[1])
+                    scores = self.forward(x)
+                    scores[:, 0] = -np.inf
+                    scores[np.diag_indices_from(scores)] = -np.inf
 
-                if y == y_pred:
-                    correct += 1
-                else:
-                    delta_weight = np.sum(alpha * true_features, axis=0).astype('float').round(5)
-                    #print('V:', delta_weight)
+                    y_pred = self.decoder.decode(scores)
 
-                    # Now subtract wrong predicted arcs
-                    for y_pred_arc in y_pred:
-                        if y_pred_arc not in y:
+                    # Sort just so it's easier to compare
+                    y.sort(key=lambda x: x[1])
+                    y_pred.sort(key=lambda x: x[1])
+
+                    gold.append(y)
+                    predictions.append(y_pred)
+
+                    if y != y_pred:
+                        delta_weight = np.zeros(self.weight.shape, dtype=float)
+
+                        for i, y_arc in enumerate(y):
+                            delta_weight = np.add(delta_weight, true_features[i])
+                        
+                        for i, y_pred_arc in enumerate(y_pred):
                             head, dep = y_pred_arc
-                            y_pred_feature = x[head][dep]
-                            feature_weight = np.array(alpha * y_pred_feature).astype('float').round(5)
+                            delta_weight = np.subtract(delta_weight, x[head][dep])
+                        
 
-                            delta_weight = np.subtract(delta_weight, feature_weight)
+                        self.weight = np.add(self.weight, delta_weight)
 
-                    #print(delta_weight)
-                    self.weight = np.add(self.weight, delta_weight)
-                    
-            total = len(dataset)
-            print('Accuracy:', correct / total)
-            print(correct)
-        
+                # Update weights with cached weights
+                self.weight = np.subtract(self.weight, (1/len(batch)) * cached_weight)
+            print('UAS:', evaluation.uas(gold, predictions))
+
         print('Finished training.')
 
     def forward(self, x):
-        h = np.dot(x, self.weight)
+        h = np.dot(x, self.weight) + 0.7
         return np.squeeze(h)
+
+    @classmethod
+    def save(cls, obj, outfile):
+        with gzip.open(outfile,'wb') as stream:
+            pickle.dump(obj,stream,-1)
+
+    @classmethod
+    def load(cls, inputfile):
+        with gzip.open(inputfile,'rb') as stream:
+            model = pickle.load(stream)
+
+        return imodel
