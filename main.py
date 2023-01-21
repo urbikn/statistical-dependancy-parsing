@@ -28,17 +28,18 @@ def get_dataset_multiprocess(dataset, extractor, multiprocess=32):
     for i, instance in tqdm(enumerate(dataset, start=1), total=len(dataset)):
         batch.append(instance)
 
-        if i % multiprocess == 0 or i == len(dataset):
+        # This small trick because for each process we have to copy the extractor
+        if i % (multiprocess * multiprocess)  == 0 or i == len(dataset):
             with Pool(multiprocess) as pool:
-                output = pool.map(extractor.get_permutations, batch)
-                output_true = pool.map(extractor.get, batch)
+                output = pool.map(extractor.get_permutations, batch, multiprocess)
+                output_true = pool.map(extractor.get, batch, multiprocess)
                 
-            for l in range(len(batch)):
-                train_dataset.append([
-                    output[l],
-                    output_true[l],
-                    batch[l].get_arcs()
-                ])
+                for l in range(len(batch)):
+                    train_dataset.append([
+                        output[l],
+                        output_true[l],
+                        batch[l].get_arcs()
+                    ])
             batch = []
     return train_dataset
 
@@ -83,6 +84,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--features', type=str)
     parser.add_argument('--weights', type=str)
+    parser.add_argument('--multiprocess', type=int, default=0)
     args = parser.parse_args()
 
     # ==== Feature extractor ====
@@ -97,12 +99,11 @@ if __name__ == '__main__':
     if args.weights:
         model = AveragePerceptron.load(args.weights)
     else:
-        model = AveragePerceptron(dim=feature_extractor.feature_count(), weight_init=5)
+        model = AveragePerceptron(dim=feature_extractor.feature_count(), weight_init=1)
 
     # ==== Training dataset ====
     if args.train_dataset:
-        train_dataset = get_dataset(args.train_dataset, feature_extractor, 'training', 32)
-        breakpoint()
+        train_dataset = get_dataset(args.train_dataset, feature_extractor, 'training', args.multiprocess)
 
         if args.save_train_dataset:
             with gzip.open(args.save_train_dataset,'wb') as stream:
@@ -114,7 +115,7 @@ if __name__ == '__main__':
 
     # ==== Dev dataset ====
     if args.dev_dataset:
-        dev_dataset = get_dataset(args.dev_dataset, feature_extractor, 'development', 64)
+        dev_dataset = get_dataset(args.dev_dataset, feature_extractor, 'development', args.multiprocess)
 
         if args.save_dev_dataset:
             with gzip.open(args.save_dev_dataset,'wb') as stream:
@@ -135,7 +136,7 @@ if __name__ == '__main__':
         with gzip.open(args.test_dataset_features,'rb') as stream:
             test_dataset = pickle.load(stream)
 
-    model.train(train_dataset, epoch=20, batch_n=32, learning_rate=0.1)
+    model.train(train_dataset, epoch=20, batch_n=1000, learning_rate=1)
 
     if len(dev_dataset):
         print('Running evaluation.')

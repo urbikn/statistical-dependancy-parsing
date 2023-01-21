@@ -110,7 +110,8 @@ class FeatureMapping:
                 # Set index for feature
                 self.feature[name][name_value] += len(self.feature[name])
 
-            index = self.feature[name][name_value]
+            # Normalize features
+            index = self.feature[name][name_value] / len(self.feature[name])
             feature.append(index)
 
         return feature
@@ -201,8 +202,9 @@ if __name__ == '__main__':
     feature.frozen = True
 
     print('Pool')
-    pool_dataset = [conll_dataset[i] for i in range(10)]
+    pool_dataset = [conll_dataset[i] for i in range(32)]
     with Pool(16) as pool:
+        features = pool.map(feature.get_permutations, pool_dataset)
         features = pool.map(feature.get_permutations, pool_dataset)
 
     pprint(len(features))

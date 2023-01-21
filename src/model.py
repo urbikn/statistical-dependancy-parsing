@@ -1,16 +1,18 @@
 import numpy as np
 import random
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import pickle, gzip
+import pprint
 
 from src import decoder
 from src import evaluation
 
 class AveragePerceptron:
     def __init__(self, dim, weight_init=20) -> None:
-        self.weight = np.random.randint(-weight_init, weight_init, dim).astype('float')
-        self.decoder = decoder.CLE()
+        # self.weight = np.random.randint(-weight_init, weight_init, dim).astype('float')
+        self.weight = np.zeros(dim).astype('float')
         self.bias = np.random.random()
+        self.decoder = decoder.CLE()
 
     def train(self, dataset, epoch=5, batch_n=64, learning_rate=0.001):
         '''
@@ -23,51 +25,57 @@ class AveragePerceptron:
             gold = []
             predictions = []
 
-            batches = []
-            for s in range(0, len(dataset), batch_n):
-                _batch = []
-                for i in range(s, s+batch_n):
-                    if i < len(dataset):
-                        _batch.append(dataset[i])
-                batches.append(_batch)
-            random.shuffle(batches)
+            random.shuffle(dataset)
 
-            # for batch in tqdm(batches):
-                # Variables used for averaging the weights
-            cached_weight = np.zeros(self.weight.shape)
             # for x, true_features, y in batch:
-            for x, true_features, y in tqdm(dataset):
-                cached_weight = np.add(cached_weight, self.weight)
+            for l, (x, true_features, tree) in tqdm(enumerate(dataset, start=1), total=len(dataset), position=0, leave=True):
+                if l % batch_n == 0:
+                    print(self.weight)
+                    print('UAS:', evaluation.uas(gold, predictions))
 
-                scores = self.forward(x)
-                scores[:, 0] = -np.inf
-                scores[np.diag_indices_from(scores)] = -np.inf
+                y_pred = self.forward(x)
+                y_pred[:, 0] = -np.inf
+                y_pred[np.diag_indices_from(y_pred)] = -np.inf
 
-                y_pred = self.decoder.decode(scores)
+                tree_pred = self.decoder.decode(y_pred)
 
                 # Sort just so it's easier to compare
-                y.sort(key=lambda x: x[1])
-                y_pred.sort(key=lambda x: x[1])
+                tree.sort(key=lambda x: x[1])
+                tree_pred.sort(key=lambda x: x[1])
 
-                gold.append(y)
-                predictions.append(y_pred)
+                gold.append(tree)
+                predictions.append(tree_pred)
 
-                if y != y_pred:
-                    delta_weight = np.zeros(self.weight.shape, dtype=float)
+                if len(tree) != len(tree_pred):
+                    continue
+                if tree != tree_pred:
+                    tree = np.array(tree)
+                    tree_pred = np.array(tree_pred)
+
+                    y_pred_scores = y_pred[tree_pred[:,0], tree_pred[:,1]]
+                    y_scores = np.full(y_pred_scores.shape, 1)
+
+                    features = x[tree_pred[:,0], tree_pred[:,1]]
 
 
-                    for i, y_arc in enumerate(y):
-                        delta_weight = np.add(delta_weight, true_features[i])
+                    #loss = (y_scores - y_pred_scores)
+                    #delta = loss.dot(features).astype('float')
+
+                    self.weight = np.add(self.weight, learning_rate * np.sum(true_features - features, axis=0))
+
+                    # self.weight = np.add(self.weight, learning_rate * delta)
+
+
+
+                    #for i, y_arc in enumerate(y):
+                    #    delta_weight = np.add(delta_weight, true_features[i])
                     
-                    for i, y_pred_arc in enumerate(y_pred):
-                        head, dep = y_pred_arc
-                        delta_weight = np.subtract(delta_weight, x[head][dep])
-                    
+                    #for i, y_pred_arc in enumerate(y_pred):
+                    #    head, dep = y_pred_arc
+                    #    delta_weight = np.subtract(delta_weight, x[head][dep])
+                    # delta = np.dot(delta_weight.T, predicted_feat)
+                    # self.weight = np.subtract(self.weight, learning_rate * delta)
 
-                    self.weight = np.add(self.weight, learning_rate * delta_weight)
-
-            # Update weights with cached weights
-            self.weight = np.subtract(self.weight, (1/len(dataset)) * cached_weight)
             print('UAS:', evaluation.uas(gold, predictions))
 
         print('Finished training.')
@@ -82,8 +90,8 @@ class AveragePerceptron:
 
 
     def forward(self, x):
-        h = np.dot(x, self.weight) + self.bias
-        return np.squeeze(h)
+        x_h = np.dot(x, self.weight) + self.bias
+        return np.squeeze(x_h)
 
     @classmethod
     def save(cls, obj, outfile):
@@ -95,4 +103,4 @@ class AveragePerceptron:
         with gzip.open(inputfile,'rb') as stream:
             model = pickle.load(stream)
 
-        return imodel
+        return model
