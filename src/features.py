@@ -1,6 +1,8 @@
 from pprint import pprint
 import pickle, gzip
 from collections import defaultdict
+from multiprocessing import Pool
+from tqdm.auto import tqdm
 import numpy as np
 
 from src.dataset import ConllSentence
@@ -25,7 +27,7 @@ class FeatureMapping:
             'hpos, dform, dpos': self.hpos_dformpos,
         }
 
-        self.feature = {name:defaultdict(int) for name in self.feature_extractors.keys()}
+        self.feature = defaultdict(int)
         self.frozen = False
 
     # Feature extractor functions
@@ -97,28 +99,34 @@ class FeatureMapping:
         return f'{self.hpos(*params)}+{self.dform_pos(*params)}',
     # ====
 
-    def feature_count(self) -> int:
+    def __len__(self) -> int:
+        return len(self.feature)
+
+    def num_features(self) -> int:
         return len(self.feature_extractors)
 
     def get_feature(self, sentence, index_dep, index_head):
-        feature = []
-        for name, func in self.feature_extractors.items():
+        '''Get index (dictionary key storing index) of features for the head->dependant given a sentence.'''
+
+        feature = [0] * self.num_features()
+        for i, (name, func) in enumerate(self.feature_extractors.items()):
             value = func(sentence, index_dep, index_head)
             name_value = f'{name}: {str(value)}'
 
-            if not self.frozen and name_value not in self.feature[name]:
+            if not self.frozen and name_value not in self.feature:
                 # Set index for feature
-                self.feature[name][name_value] += len(self.feature[name])
+                self.feature[name_value] += len(self.feature)
 
-            # Normalize features
-            index = self.feature[name][name_value] / len(self.feature[name])
-            feature.append(index)
+            feature[i] = self.feature[name_value]
 
         return feature
         
 
-    def get(self, sentence: ConllSentence) -> np.ndarray:
-        # indexes should be dependants (so look at who the head is)
+    def get(self, sentence: ConllSentence):
+        '''Get features of all head->dependant's in the sentence.
+        
+        The features are indexes retrieved from the self.feature dictionary.
+        '''
         features = []
         for index_dep in range(1, len(sentence) + 1):
             index_head = sentence[index_dep]['head']
@@ -126,34 +134,75 @@ class FeatureMapping:
             feature = self.get_feature(sentence, index_dep, index_head)
             features.append(feature)
 
-        return np.asarray(features, dtype=object)
+        return features
 
     def get_permutations(self, sentence: ConllSentence, default=0) -> np.ndarray:
         '''Used for getting all possible arc features. Don't add new features'''
-        features = []
-
         # save variable to see if we should unfreeze
-        unfreeze = not self.frozen
         # Freeze feature extractor
+        unfreeze = not self.frozen
         self.frozen = True
 
+        features = []
         for index_head in range(0, len(sentence) + 1):
             # Sets the first feature to the default value (to denote all the )
-            feature = [np.full(self.feature_count(), default)]
+            feature = [np.full(self.num_features(), 0)]
             for index_dep in range(1, len(sentence) + 1):
                 if index_head != index_dep:
                     f = self.get_feature(sentence, index_dep, index_head)
                 else:
-                    f = np.full(self.feature_count(), default)
+                    f = np.full(self.num_features(), default)
                 
                 feature.append(f)
 
             features.append(feature)
 
-        if unfreeze:
-            self.frozen = False
+        self.frozen = False if unfreeze else self.frozen
+        return np.asarray(features)
 
-        return np.asarray(features, dtype=object)
+    def feature_to_tensor(self, feature) -> np.ndarray:
+        '''Given a sentence features convert to binary vectors where indexes are 1 and others 0.
+        The binary vector is the size of len(self) a.k.a len(self.feature).
+        
+        Parameters:
+            feature: a permutation of a sentence.
+            features: A 3D array, where the first dimension is each sentence, and all other from permutations.
+        '''
+        feature_index = feature
+        # +1 right now, because the indexes saved start at 1, but we also have 0
+        vector = np.zeros((*feature_index.shape[:-1], len(self) + 1))
+        for head_index in range(vector.shape[0]):
+            for dep_index in range(vector.shape[1]):
+                indexes = feature_index[head_index][dep_index]
+                vector[head_index][dep_index][indexes] = 1
+                vector[head_index][dep_index][0] = 0
+        
+        return vector
+
+
+    def features_to_tensors(self, features) -> np.ndarray:
+        '''Given a list of features (so indexes to features) convert to binary vectors where indexes are 1 and others 0.
+        The binary vector is the size of len(self) a.k.a len(self.feature).
+        
+        Parameters:
+            features: A 4D array, where the first dimension is each sentence, and all other from permutations.
+        '''
+
+        vectors = []
+        for i, feature in tqdm(enumerate(features, start=1), total=len(features), desc="Converting features to tensors"):
+            feature_index, arcs = feature
+            # +1 right now, because the indexes saved start at 1, but we also have 0
+            vector = np.zeros((*feature_index.shape[:-1], len(self) + 1))
+            for head_index in range(vector.shape[0]):
+                for dep_index in range(vector.shape[1]):
+                    indexes = feature_index[head_index][dep_index]
+                    vector[head_index][dep_index][indexes] = 1
+                    vector[head_index][dep_index][0] = 0
+
+            vectors.append((vector, arcs))
+
+        return vectors
+
 
     @classmethod
     def save(cls, obj, outfile):
@@ -166,10 +215,6 @@ class FeatureMapping:
             featmap = pickle.load(stream)
 
         return featmap
-
-from multiprocessing import Process
-from multiprocessing import Pool
-
 
 
 if __name__ == '__main__':

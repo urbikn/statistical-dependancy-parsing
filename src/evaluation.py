@@ -15,7 +15,7 @@ def uas(gold, prediction):
             if predicted_arc in gold_sentence:
                 match_count += 1
 
-    return match_count / total_count
+    return (match_count / total_count) * 100
 
 def las_dataframe(gold, prediction):
     if type(gold).__name__ == 'ConllDataset':
@@ -37,7 +37,7 @@ def las_dataframe(gold, prediction):
                 match_count += 1 
 
 
-    return match_count / total_count
+    return (match_count / total_count) * 100
 
 def uas_dataframe(gold, prediction):
     if type(gold).__name__ == 'ConllDataset':
