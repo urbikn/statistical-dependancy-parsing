@@ -2,7 +2,7 @@ from pprint import pprint
 import pickle, gzip
 from collections import defaultdict
 from multiprocessing import Pool
-from tqdm.auto import tqdm
+from tqdm.auto import tqdm, trange
 import numpy as np
 
 from src.dataset import ConllSentence
@@ -25,6 +25,10 @@ class FeatureMapping:
             'hform, hpos, dpos': self.hformpos_dpos,
             'hform, dform, dpos': self.hform_dformpos,
             'hpos, dform, dpos': self.hpos_dformpos,
+            'hpos, dpos, hpos+1, dpos-1': self.hpos_next_dpos_prev,
+            'hpos, dpos, hpos-1, dpos+1': self.hpos_prev_dpos_next,
+            'hpos, dpos, hpos+1, dpos+1': self.hpos_next_dpos_next,
+            'hpos, dpos, hpos-1, dpos-1': self.hpos_prev_dpos_prev,
         }
 
         self.feature = defaultdict(int)
@@ -32,22 +36,49 @@ class FeatureMapping:
 
     # Feature extractor functions
     # ====
+    def distance_direction(self, sentence, index_dep, index_head):
+        distance = abs(index_dep - index_head)
+        if index_head < 0 or index_dep < 0 or len(sentence) <= index_head or len(sentence) <= index_dep:
+            return '__NULL__'
+        elif index_head < index_dep:
+            return f'left+{distance}'
+        else: 
+            return f'right+{distance}'
+    
     def hform(self, sentence, index_dep, index_head) -> str:
-        form = 'ROOT' if index_head == 0 else sentence[index_head]['form']
+        if index_head < 0 or len(sentence) < index_head:
+            form = '__NULL__'
+        elif index_head == 0:
+            form = 'ROOT'
+        else:
+            form = sentence[index_head]['form']
 
         return form
 
     def hpos(self, sentence, index_dep, index_head) -> str:
-        pos = 'ROOT' if index_head == 0 else sentence[index_head]['pos']
+        if index_head < 0 or len(sentence) < index_head:
+            pos = '__NULL__'
+        elif index_head == 0:
+            pos = 'ROOT'
+        else:
+            pos = sentence[index_head]['pos']
 
         return pos
 
     def dform(self, sentence, index_dep, index_head) -> str:
-        form = sentence[index_dep]['form']
+        if index_dep <= 0 or len(sentence) < index_dep:
+            form = '__NULL__'
+        else:
+            form = sentence[index_dep]['form']
+
         return form
 
     def dpos(self, sentence, index_dep, index_head) -> str:
-        pos = sentence[index_dep]['pos']
+        if index_dep <= 0 or len(sentence) < index_dep:
+            pos = '__NULL__'
+        else:
+            pos = sentence[index_dep]['pos']
+
         return pos
 
     def hform_pos(self, sentence, index_dep, index_head) -> str:
@@ -97,6 +128,31 @@ class FeatureMapping:
     def hpos_dformpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         return f'{self.hpos(*params)}+{self.dform_pos(*params)}',
+
+    def hpos_dformpos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hpos(*params)}+{self.dform_pos(*params)}',
+
+    def hpos_next_dpos_prev(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        params_neighbors = (sentence, index_dep - 1, index_head + 1)
+        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}',
+        
+    def hpos_prev_dpos_next(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        params_neighbors = (sentence, index_dep+1, index_head-1)
+        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}',
+
+    def hpos_next_dpos_next(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        params_neighbors = (sentence, index_dep+1, index_head+1)
+        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}',
+
+    def hpos_prev_dpos_prev(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        params_neighbors = (sentence, index_dep-1, index_head-1)
+        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}',
+
     # ====
 
     def __len__(self) -> int:
@@ -110,7 +166,8 @@ class FeatureMapping:
 
         feature = [0] * self.num_features()
         for i, (name, func) in enumerate(self.feature_extractors.items()):
-            value = func(sentence, index_dep, index_head)
+            value = str(func(sentence, index_dep, index_head))
+            value += self.distance_direction(sentence, index_dep, index_head)
             name_value = f'{name}: {str(value)}'
 
             if not self.frozen and name_value not in self.feature:
@@ -203,6 +260,40 @@ class FeatureMapping:
 
         return vectors
 
+        
+    @classmethod
+    def train_on_dataset(cls, dataset):
+        extractor = FeatureMapping()
+        for i in trange(len(dataset)):
+            extractor.get(dataset[i])
+        return extractor
+
+    @classmethod
+    def train(cls, input_file, num_process=16):
+        dataset = list(ConllDataset(input_file))
+        extractor = FeatureMapping()
+
+        # Splits dataset into subsets for multiprocessing
+        step_size = int(len(dataset) / num_process)
+        subdataset = [dataset[i:i+step_size] for i in range(0, len(dataset) + 1 - step_size, step_size)]
+
+        # Use multiprocessing to extract features quicker
+        # Basically it splits the dataset into processes to extract unknown
+        # features faster for the training of the FeatureMapping class
+        with Pool(num_process) as pool:
+            extractors = pool.map(FeatureMapping.train_on_dataset, subdataset)
+
+            # For each sub feature extractor get all keys
+            features = []
+            for e in extractors:
+                features += list(e.feature.keys())
+            
+            # Remove all possible duplicate features
+            feature_set = set(features)
+            extractor.feature = {feature: index for index, feature in enumerate(feature_set, start=1)}
+        
+        breakpoint()
+        return extractor  
 
     @classmethod
     def save(cls, obj, outfile):
@@ -221,6 +312,9 @@ if __name__ == '__main__':
     original_file = '../data/wsj_dev.conll06.pred'
     conll_dataset = ConllDataset(original_file)
     feature = FeatureMapping()
+
+    with Pool(16) as pool:
+        features = pool.map(feature.get_permutations, list(conll_dataset)[:100])
 
     # First sanity check
     # 1) Get all indexes from 1 to d-1

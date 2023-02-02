@@ -2,7 +2,7 @@ import numpy as np
 import random
 from tqdm.auto import tqdm
 import pickle, gzip
-import pprint
+import time
 
 from src import decoder
 from src import evaluation
@@ -47,7 +47,6 @@ class AveragePerceptron:
                         progressbar_params['postfix']['UAS_train'] = uas
                         progressbar_params['postfix']['hit'] = hit
                         progressbar.set_postfix(progressbar_params['postfix'])
-                        hit = 0
                         gold = []
                         predictions = []
                     
@@ -61,12 +60,9 @@ class AveragePerceptron:
                         progressbar.set_postfix(progressbar_params['postfix'])
                         progressbar.set_description(progressbar_params['desc'])
 
+
                     x = self.extractor.feature_to_tensor(instance)
-
                     scores = self.forward(x)
-                    scores[:, 0] = -np.inf
-                    scores[np.diag_indices_from(scores)] = -np.inf
-
                     tree_pred = self.decoder.decode(scores)
 
                     # Sort just so it's easier to compare
@@ -95,18 +91,18 @@ class AveragePerceptron:
 
     def predict(self, instance):
         x = self.extractor.feature_to_tensor(instance)
-
         scores = self.forward(x)
-        scores[:, 0] = -np.inf
-        scores[np.diag_indices_from(scores)] = -np.inf
-
         y_pred = self.decoder.decode(scores)
         return y_pred
 
 
     def forward(self, x):
-        x_h = np.dot(x, self.weight) + self.bias
-        return np.squeeze(x_h)
+        x_h = np.matmul(x, self.weight)
+        # Set scores that shouldn't be computed by the decoder
+        x_h[:, 0] = -np.inf
+        x_h[np.diag_indices_from(x_h)] = -np.inf
+
+        return x_h
 
     @classmethod
     def save(cls, obj, outfile):

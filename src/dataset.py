@@ -62,6 +62,10 @@ class ConllDataset():
     def __len__(self):
         return len(self.sentence_indexes)
 
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
 
     def write(self, filepath, add_columns=False):
         self.dataset.to_csv(filepath, sep='\t', index=False, header=add_columns)

@@ -4,23 +4,11 @@ import gzip
 from tqdm import trange, tqdm
 from multiprocessing import Pool
 
-
 from src.dataset import ConllDataset
 from src.features import FeatureMapping
 from src.model import AveragePerceptron
 from src import evaluation
 
-def train_feature_extractor(input_file, output_file):
-    dataset = ConllDataset(input_file)
-    feature_extractor = FeatureMapping()
-
-    print('== Training feature extractor ==')
-    for i in trange(len(dataset)):
-        sentence = dataset[i]
-        feature_extractor.get(sentence)
-
-    print('Saving feature extractor to:', output_file)
-    FeatureMapping.save(feature_extractor, output_file)
 
 def get_dataset(input_file, extractor, type='training', num_process=32):
     dataset = ConllDataset(input_file)
@@ -30,7 +18,6 @@ def get_dataset(input_file, extractor, type='training', num_process=32):
     items_per_process = 32
     for i, instance in tqdm(enumerate(dataset, start=1), total=len(dataset), desc=f'Extracting features from {type} dataset'):
         batch.append(instance)
-
         # This small trick because for each process we have to copy the extractor
         if i % (num_process * items_per_process)  == 0 or i == len(dataset):
             with Pool(num_process) as pool:
@@ -65,8 +52,9 @@ if __name__ == '__main__':
 
     # ==== Feature extractor ====
     if args.train_feature_file:
-        train_feature_extractor(args.train_feature_file, args.save_extractor)
-        feature_extractor = FeatureMapping.load(args.save_extractor)
+        print('== Training feature extractor ==')
+        feature_extractor = FeatureMapping.train(args.train_feature_file)
+        FeatureMapping.save(feature_extractor, args.save_extractor)
     if args.extractor:
         feature_extractor = FeatureMapping.load(args.extractor)
     feature_extractor.frozen = True
@@ -103,17 +91,17 @@ if __name__ == '__main__':
     if args.train_dataset:
         with gzip.open(args.train_dataset,'rb') as stream:
             train_dataset = pickle.load(stream)
-            # train_dataset = feature_extractor.features_to_tensors(dataset)
+            #train_dataset = feature_extractor.features_to_tensors(train_dataset)
 
     if args.dev_dataset:
         with gzip.open(args.dev_dataset,'rb') as stream:
             dev_dataset = pickle.load(stream)
-            # dev_dataset = feature_extractor.features_to_tensors(dataset)
+            #dev_dataset = feature_extractor.features_to_tensors(dev_dataset)
 
     if args.test_dataset:
         with gzip.open(args.test_dataset,'rb') as stream:
             dataset = pickle.load(stream)
             test_dataset = feature_extractor.features_to_tensors(dataset)
 
-    model.train(train_dataset, dev_dataset, epoch=20, batch_n=1000, eval_interval=2500, learning_rate=0.01)
-    AveragePerceptron.save(model, 'datasets/perceptron_en_5k_epoch40.p')
+    model.train(train_dataset, dev_dataset, epoch=5, batch_n=1000, eval_interval=5000, learning_rate=0.01)
+    AveragePerceptron.save(model, 'datasets/perceptron_en_5k_epoch65.p')
