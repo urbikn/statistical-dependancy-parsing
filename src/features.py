@@ -38,6 +38,8 @@ class FeatureMapping:
     # ====
     def distance_direction(self, sentence, index_dep, index_head):
         distance = abs(index_dep - index_head)
+        distance = distance if distance <= 4 else "+4"
+
         if index_head < 0 or index_dep < 0 or len(sentence) <= index_head or len(sentence) <= index_dep:
             return '__NULL__'
         elif index_head < index_dep:
@@ -91,67 +93,79 @@ class FeatureMapping:
 
     def hform_dpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.dpos(*params)}',
+        return f'{self.hform(*params)}+{self.dpos(*params)}'
 
     def hpos_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hpos(*params)}+{self.dform(*params)}',
+        return f'{self.hpos(*params)}+{self.dform(*params)}'
 
     def hform_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.dform(*params)}',
+        return f'{self.hform(*params)}+{self.dform(*params)}'
 
     def hform_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.dform(*params)}',
+        return f'{self.hform(*params)}+{self.dform(*params)}'
 
     def hpos_dpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hpos(*params)}+{self.dpos(*params)}',
+        return f'{self.hpos(*params)}+{self.dpos(*params)}'
 
     def hformpos_dformpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform_pos(*params)}+{self.dform_pos(*params)}',
+        return f'{self.hform_pos(*params)}+{self.dform_pos(*params)}'
 
     def hformpos_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform_pos(*params)}+{self.dform(*params)}',
+        return f'{self.hform_pos(*params)}+{self.dform(*params)}'
 
     def hformpos_dpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform_pos(*params)}+{self.dpos(*params)}',
+        return f'{self.hform_pos(*params)}+{self.dpos(*params)}'
 
     def hform_dformpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.dform_pos(*params)}',
+        return f'{self.hform(*params)}+{self.dform_pos(*params)}'
 
     def hpos_dformpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hpos(*params)}+{self.dform_pos(*params)}',
+        return f'{self.hpos(*params)}+{self.dform_pos(*params)}'
 
     def hpos_dformpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hpos(*params)}+{self.dform_pos(*params)}',
+        return f'{self.hpos(*params)}+{self.dform_pos(*params)}'
 
     def hpos_next_dpos_prev(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep - 1, index_head + 1)
-        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}',
+        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
         
     def hpos_prev_dpos_next(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep+1, index_head-1)
-        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}',
+        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
 
     def hpos_next_dpos_next(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep+1, index_head+1)
-        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}',
+        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
 
     def hpos_prev_dpos_prev(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep-1, index_head-1)
-        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}',
+        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
+
+    def between_pos(self, sentence, index_dep, index_head) -> str:
+        head_pos = self.hpos(sentence, index_dep, index_head)
+        dep_pos = self.dpos(sentence, index_dep, index_head)
+        start, end = (index_dep, index_head) if index_dep < index_head else (index_head, index_dep)
+
+        features = []
+        for i in range(start+1, end):
+            features.append(f'between pos: {head_pos}+{self.dpos(sentence, i, index_head)}+{dep_pos}+{abs(index_head-i)}+{abs(index_dep-i)}')
+
+        
+        return features
 
     # ====
 
@@ -164,17 +178,24 @@ class FeatureMapping:
     def get_feature(self, sentence, index_dep, index_head):
         '''Get index (dictionary key storing index) of features for the head->dependant given a sentence.'''
 
-        feature = [0] * self.num_features()
+        feature = []
         for i, (name, func) in enumerate(self.feature_extractors.items()):
             value = str(func(sentence, index_dep, index_head))
-            value += self.distance_direction(sentence, index_dep, index_head)
+            value += f'+{self.distance_direction(sentence, index_dep, index_head)}'
             name_value = f'{name}: {str(value)}'
 
             if not self.frozen and name_value not in self.feature:
                 # Set index for feature
                 self.feature[name_value] += len(self.feature)
 
-            feature[i] = self.feature[name_value]
+            feature.append(self.feature.get(name_value, 0))
+
+        for name_value in self.between_pos(sentence, index_dep, index_head):
+            if not self.frozen and name_value not in self.feature:
+                # Set index for feature
+                self.feature[name_value] += len(self.feature)
+            
+            feature.append(self.feature.get(name_value, 0))
 
         return feature
         
@@ -193,12 +214,10 @@ class FeatureMapping:
 
         return features
 
-    def get_permutations(self, sentence: ConllSentence, default=0) -> np.ndarray:
+    def get_permutations(self, sentence: ConllSentence, default=0, freeze=True):
         '''Used for getting all possible arc features. Don't add new features'''
         # save variable to see if we should unfreeze
         # Freeze feature extractor
-        unfreeze = not self.frozen
-        self.frozen = True
 
         features = []
         for index_head in range(0, len(sentence) + 1):
@@ -214,58 +233,14 @@ class FeatureMapping:
 
             features.append(feature)
 
-        self.frozen = False if unfreeze else self.frozen
-        return np.asarray(features)
-
-    def feature_to_tensor(self, feature) -> np.ndarray:
-        '''Given a sentence features convert to binary vectors where indexes are 1 and others 0.
-        The binary vector is the size of len(self) a.k.a len(self.feature).
-        
-        Parameters:
-            feature: a permutation of a sentence.
-            features: A 3D array, where the first dimension is each sentence, and all other from permutations.
-        '''
-        feature_index = feature
-        # +1 right now, because the indexes saved start at 1, but we also have 0
-        vector = np.zeros((*feature_index.shape[:-1], len(self) + 1))
-        for head_index in range(vector.shape[0]):
-            for dep_index in range(vector.shape[1]):
-                indexes = feature_index[head_index][dep_index]
-                vector[head_index][dep_index][indexes] = 1
-                vector[head_index][dep_index][0] = 0
-        
-        return vector
-
-
-    def features_to_tensors(self, features) -> np.ndarray:
-        '''Given a list of features (so indexes to features) convert to binary vectors where indexes are 1 and others 0.
-        The binary vector is the size of len(self) a.k.a len(self.feature).
-        
-        Parameters:
-            features: A 4D array, where the first dimension is each sentence, and all other from permutations.
-        '''
-
-        vectors = []
-        for i, feature in tqdm(enumerate(features, start=1), total=len(features), desc="Converting features to tensors"):
-            feature_index, arcs = feature
-            # +1 right now, because the indexes saved start at 1, but we also have 0
-            vector = np.zeros((*feature_index.shape[:-1], len(self) + 1))
-            for head_index in range(vector.shape[0]):
-                for dep_index in range(vector.shape[1]):
-                    indexes = feature_index[head_index][dep_index]
-                    vector[head_index][dep_index][indexes] = 1
-                    vector[head_index][dep_index][0] = 0
-
-            vectors.append((vector, arcs))
-
-        return vectors
+        return features
 
         
     @classmethod
     def train_on_dataset(cls, dataset):
         extractor = FeatureMapping()
         for i in trange(len(dataset)):
-            extractor.get(dataset[i])
+            extractor.get_permutations(dataset[i])
         return extractor
 
     @classmethod
@@ -292,7 +267,6 @@ class FeatureMapping:
             feature_set = set(features)
             extractor.feature = {feature: index for index, feature in enumerate(feature_set, start=1)}
         
-        breakpoint()
         return extractor  
 
     @classmethod
@@ -313,8 +287,8 @@ if __name__ == '__main__':
     conll_dataset = ConllDataset(original_file)
     feature = FeatureMapping()
 
-    with Pool(16) as pool:
-        features = pool.map(feature.get_permutations, list(conll_dataset)[:100])
+    #with Pool(16) as pool:
+    #    features = pool.map(feature.get_permutations, list(conll_dataset)[:100])
 
     # First sanity check
     # 1) Get all indexes from 1 to d-1

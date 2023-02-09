@@ -10,11 +10,11 @@ from src.model import AveragePerceptron
 from src import evaluation
 
 
-def get_dataset(input_file, extractor, type='training', num_process=32):
+def create_dataset(input_file, extractor, output_file, type='training', num_process=32):
     dataset = ConllDataset(input_file)
-    train_dataset = []
 
     batch = []
+    train_dataset = []
     items_per_process = 32
     for i, instance in tqdm(enumerate(dataset, start=1), total=len(dataset), desc=f'Extracting features from {type} dataset'):
         batch.append(instance)
@@ -28,7 +28,12 @@ def get_dataset(input_file, extractor, type='training', num_process=32):
                         output[l],
                         batch[l].get_arcs()
                     ])
+
+            with open(output_file,'ab') as stream:
+                pickle.dump(train_dataset,stream)
             batch = []
+            train_dataset = []
+
     return train_dataset
 
 
@@ -47,6 +52,7 @@ if __name__ == '__main__':
     parser.add_argument('--test-dataset', type=str)
 
     parser.add_argument('--weights', type=str)
+    parser.add_argument('--save-model', type=str, default=None)
     parser.add_argument('--num_process', type=int, default=0)
     args = parser.parse_args()
 
@@ -63,22 +69,14 @@ if __name__ == '__main__':
     if args.weights:
         model = AveragePerceptron.load(args.weights)
     else:
-        model = AveragePerceptron(feature_extractor, dim=len(feature_extractor) + 1, weight_init=1)
+        model = AveragePerceptron(feature_extractor, dim=len(feature_extractor) + 1)
 
     # == Processing input files ==
     if args.process_data:
         if args.train_input:
-            train_dataset = get_dataset(args.train_input, feature_extractor, 'training', args.num_process)
-
-            with gzip.open(args.train_dataset,'wb') as stream:
-                pickle.dump(train_dataset,stream,-1)
-
+            create_dataset(args.train_input, feature_extractor, args.train_dataset, 'training', args.num_process)
         if args.dev_input:
-            dev_dataset = get_dataset(args.dev_input, feature_extractor, 'development', args.num_process)
-
-            with gzip.open(args.dev_dataset,'wb') as stream:
-                pickle.dump(dev_dataset,stream,-1)
-
+            create_dataset(args.dev_input, feature_extractor, args.dev_dataset, 'development', args.num_process)
         if args.test_input:
             pass
             # test_dataset = get_test_dataset(args.test_dataset, feature_extractor, 32)
@@ -91,17 +89,15 @@ if __name__ == '__main__':
     if args.train_dataset:
         with gzip.open(args.train_dataset,'rb') as stream:
             train_dataset = pickle.load(stream)
-            #train_dataset = feature_extractor.features_to_tensors(train_dataset)
 
+    dev_dataset = None
     if args.dev_dataset:
         with gzip.open(args.dev_dataset,'rb') as stream:
             dev_dataset = pickle.load(stream)
-            #dev_dataset = feature_extractor.features_to_tensors(dev_dataset)
 
     if args.test_dataset:
         with gzip.open(args.test_dataset,'rb') as stream:
             dataset = pickle.load(stream)
             test_dataset = feature_extractor.features_to_tensors(dataset)
 
-    model.train(train_dataset, dev_dataset, epoch=5, batch_n=1000, eval_interval=5000, learning_rate=0.01)
-    AveragePerceptron.save(model, 'datasets/perceptron_en_5k_epoch65.p')
+    model.train(train_dataset, dev_dataset, epoch=400, eval_interval=500, learning_rate=1, save_folder=args.save_model)
