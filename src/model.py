@@ -16,7 +16,7 @@ class AveragePerceptron:
         self.bias = np.random.random()
         self.decoder = decoder.CLE()
         self.extractor = extractor
-        self.lambda_value = 0.5
+        self.lambda_value = 0.1
 
     def train(self, dataset, dev_dataset=None, epoch=5, eval_interval=200, learning_rate=0.1, save_folder=None):
         '''
@@ -46,20 +46,20 @@ class AveragePerceptron:
                     pred_trees.append(tree_pred)
 
                     # Update weights
-                    gold_indexes = np.unique(np.concatenate([instance[arc[0]][arc[1]] for arc in tree]))
-                    pred_indexes = np.unique(np.concatenate([instance[arc[0]][arc[1]] for arc in tree_pred]))
-                    self.weight[[gold_indexes[gold_indexes != 0]]] += learning_rate
-                    self.weight[[pred_indexes[pred_indexes != 0]]] -= learning_rate
-
+                    for arc in tree:
+                        self.weight[instance[arc[0]][arc[1]]] += learning_rate
+                    for arc in tree_pred:
+                        self.weight[instance[arc[0]][arc[1]]] -= learning_rate
+                    
+                    # Cache current weights
+                    cached_weights.append(self.weight)
                     # at the end of each batch cache weights and run evaluation
                     if l % eval_interval == 0:
-                        # Cache current weights
-                        # cached_weights.append(self.weight)
 
                         # Run evaluation
                         gold_trees = [tree for instance, tree in dataset[l-eval_interval:l]]
                         uas = evaluation.uas(gold_trees, pred_trees)
-                        hit += sum([1 for tree, tree_pred in zip(gold_trees, pred_trees) if tree == tree_pred ])
+                        hit += sum([1 for tree, tree_pred in zip(gold_trees, pred_trees) if sorted(tree, key=lambda x: x[1]) == sorted(tree_pred, key=lambda x: x[1])])
                         progressbar_params['postfix'].update({'UAS_train': uas, 'hit': hit})
                         progressbar.set_postfix(progressbar_params['postfix'])
 
@@ -84,7 +84,7 @@ class AveragePerceptron:
                 
 
             # Update weights using cache
-            # self.weight = (1/len(cached_weights)) * np.stack(cached_weights).sum(axis=0)
+            self.weight = np.stack(cached_weights).sum(axis=0) / len(cached_weights)
 
         print('Finished training.')
 
@@ -96,12 +96,16 @@ class AveragePerceptron:
 
     def forward(self, x):
         # +1 right now, because the indexes saved start at 1, but we also have 0
-        vector = np.ones((len(x), len(x[0])), dtype="float32")
+        self.weight[0] = 0
+
+        vector = np.zeros((len(x), len(x[0])), dtype="float32")
         for head_index in range(vector.shape[0]):
             for dep_index in range(vector.shape[1]):
                 if head_index != dep_index:
-                    indexes = np.unique(x[head_index][dep_index])
-                    vector[head_index][dep_index] = self.weight[indexes[indexes != 0]].sum()
+                    vector[head_index][dep_index] = self.weight[x[head_index][dep_index]].sum()
+        
+        # Only include non-zero values
+        # vector[vector < 0] = 0
         
         # Set scores that shouldn't be computed by the decoder
         vector[:, 0] = -np.inf

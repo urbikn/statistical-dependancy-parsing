@@ -9,6 +9,15 @@ from src.features import FeatureMapping
 from src.model import AveragePerceptron
 from src import evaluation
 
+# Utility function to help read big Pickle files
+def read_from_pickle(path):
+    with open(path, 'rb') as file:
+        try:
+            while True:
+                yield pickle.load(file)
+        except EOFError:
+            pass
+
 
 def create_dataset(input_file, extractor, output_file, type='training', num_process=32):
     dataset = ConllDataset(input_file)
@@ -87,17 +96,19 @@ if __name__ == '__main__':
 
     # == Processing training dataset ==
     if args.train_dataset:
-        with gzip.open(args.train_dataset,'rb') as stream:
-            train_dataset = pickle.load(stream)
+        train_dataset_list = list(read_from_pickle(args.train_dataset))
+        train_dataset = [item for dataset_list in train_dataset_list for item in dataset_list]
 
     dev_dataset = None
     if args.dev_dataset:
-        with gzip.open(args.dev_dataset,'rb') as stream:
-            dev_dataset = pickle.load(stream)
-
+        dev_dataset_list = list(read_from_pickle(args.dev_dataset))
+        dev_dataset = [item for dataset_list in dev_dataset_list for item in dataset_list]
+        
     if args.test_dataset:
-        with gzip.open(args.test_dataset,'rb') as stream:
+        with open(args.test_dataset,'rb') as stream:
             dataset = pickle.load(stream)
             test_dataset = feature_extractor.features_to_tensors(dataset)
 
-    model.train(train_dataset, dev_dataset, epoch=400, eval_interval=500, learning_rate=1, save_folder=args.save_model)
+
+    model.train(train_dataset, dev_dataset, epoch=40, eval_interval=500, learning_rate=1, save_folder=args.save_model)
+

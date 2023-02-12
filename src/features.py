@@ -16,9 +16,11 @@ class FeatureMapping:
             'hpos': self.hpos,
             'dform': self.dform,
             'dpos': self.dpos,
-            'hform, dpos': self.hform_dpos,
-            'hpos, dpos': self.hpos_dform,
+            'hform, hpos': self.hform_pos,
+            'dform, dpos': self.dform_pos,
             'hform, dform': self.hform_dform,
+            'hform, dpos': self.hform_dpos,
+            'hpos, dform': self.hpos_dform,
             'hpos, dpos': self.hpos_dpos,
             'hform, hpos, dform, dpos': self.hformpos_dformpos,
             'hform, hpos, dform': self.hformpos_dform,
@@ -29,23 +31,27 @@ class FeatureMapping:
             'hpos, dpos, hpos-1, dpos+1': self.hpos_prev_dpos_next,
             'hpos, dpos, hpos+1, dpos+1': self.hpos_next_dpos_next,
             'hpos, dpos, hpos-1, dpos-1': self.hpos_prev_dpos_prev,
+            'hpos between dpos': self.between_pos,
+            'hpos between per dpos': self.between_pos_per
         }
 
+        self.frozen = False 
         self.feature = defaultdict(int)
-        self.frozen = False
 
     # Feature extractor functions
     # ====
-    def distance_direction(self, sentence, index_dep, index_head):
+    def distance(self, sentence, index_dep, index_head) -> str:
         distance = abs(index_dep - index_head)
-        distance = distance if distance <= 4 else "+4"
+        distance = distance if distance <= 4 else '+4'
 
-        if index_head < 0 or index_dep < 0 or len(sentence) <= index_head or len(sentence) <= index_dep:
-            return '__NULL__'
-        elif index_head < index_dep:
-            return f'left+{distance}'
-        else: 
-            return f'right+{distance}'
+        return f'{distance}'
+
+    def direction(self, sentence, index_dep, index_head) -> str:
+        if index_dep < index_head:
+            return 'right'
+        else:
+            return 'left'
+    
     
     def hform(self, sentence, index_dep, index_head) -> str:
         if index_head < 0 or len(sentence) < index_head:
@@ -83,10 +89,12 @@ class FeatureMapping:
 
         return pos
 
+    # HELPER
     def hform_pos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         return f'{self.hform(*params)}+{self.hpos(*params)}'
 
+    # HELPER
     def dform_pos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         return f'{self.dform(*params)}+{self.dpos(*params)}'
@@ -98,10 +106,6 @@ class FeatureMapping:
     def hpos_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         return f'{self.hpos(*params)}+{self.dform(*params)}'
-
-    def hform_dform(self, sentence, index_dep, index_head) -> str:
-        params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.dform(*params)}'
 
     def hform_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
@@ -131,10 +135,6 @@ class FeatureMapping:
         params = (sentence, index_dep, index_head)
         return f'{self.hpos(*params)}+{self.dform_pos(*params)}'
 
-    def hpos_dformpos(self, sentence, index_dep, index_head) -> str:
-        params = (sentence, index_dep, index_head)
-        return f'{self.hpos(*params)}+{self.dform_pos(*params)}'
-
     def hpos_next_dpos_prev(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep - 1, index_head + 1)
@@ -156,14 +156,20 @@ class FeatureMapping:
         return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
 
     def between_pos(self, sentence, index_dep, index_head) -> str:
+        if index_dep < index_head:
+            return f'between pos: {"+".join([self.dpos(sentence, i, 0) for i in range(index_dep, index_head+1)])}'
+        else:
+            return f'between pos: {"+".join([self.hpos(sentence, 0, i) for i in range(index_head, index_dep+1)])}'
+
+    def between_pos_per(self, sentence, index_dep, index_head) -> list:
         head_pos = self.hpos(sentence, index_dep, index_head)
         dep_pos = self.dpos(sentence, index_dep, index_head)
-        start, end = (index_dep, index_head) if index_dep < index_head else (index_head, index_dep)
+        start, end = (index_head, index_dep) if index_head < index_dep else (index_dep, index_head)
 
         features = []
-        for i in range(start+1, end):
-            features.append(f'between pos: {head_pos}+{self.dpos(sentence, i, index_head)}+{dep_pos}+{abs(index_head-i)}+{abs(index_dep-i)}')
-
+        for i in range(start, end+1):
+            between_pos = self.dpos(sentence, i, 0)
+            features.append(f'between pos: {head_pos}+{between_pos}+{dep_pos}')
         
         return features
 
@@ -180,21 +186,40 @@ class FeatureMapping:
 
         feature = []
         for i, (name, func) in enumerate(self.feature_extractors.items()):
-            value = str(func(sentence, index_dep, index_head))
-            value += f'+{self.distance_direction(sentence, index_dep, index_head)}'
-            name_value = f'{name}: {str(value)}'
+            if name == 'hpos between per dpos':
+                continue
+
+            value = str(func(sentence, index_dep, index_head)) 
+            values = [
+                value,
+                value + f'+{index_head},{index_dep}', # Add position + direction
+                value + f'+{self.distance(sentence, index_dep, index_head)}', # Add distance
+                value + f'+{self.direction(sentence, index_dep, index_head)}', # Add direction
+                value + f'+{len(sentence)}' # Sentence length
+            ]
+
+            for value in values:
+                name_value = f'{name}: {str(value)}'
+
+                if not self.frozen and name_value not in self.feature:
+                    # Set index for feature
+                    self.feature[name_value] += len(self.feature)
+
+                feature.append(self.feature.get(name_value, 0))
+
+        for value_name in self.between_pos_per(sentence, index_dep, index_head):
+            values = [
+                value_name,
+                value_name + f'+{index_head},{index_dep}', # Add position + direction
+                value_name + f'+{self.distance(sentence, index_dep, index_head)}', # Add distance
+                value_name + f'+{self.direction(sentence, index_dep, index_head)}', # Add direction
+                value_name + f'+{len(sentence)}' # Sentence length
+            ]
 
             if not self.frozen and name_value not in self.feature:
                 # Set index for feature
                 self.feature[name_value] += len(self.feature)
 
-            feature.append(self.feature.get(name_value, 0))
-
-        for name_value in self.between_pos(sentence, index_dep, index_head):
-            if not self.frozen and name_value not in self.feature:
-                # Set index for feature
-                self.feature[name_value] += len(self.feature)
-            
             feature.append(self.feature.get(name_value, 0))
 
         return feature
@@ -222,12 +247,12 @@ class FeatureMapping:
         features = []
         for index_head in range(0, len(sentence) + 1):
             # Sets the first feature to the default value (to denote all the )
-            feature = [np.full(self.num_features(), 0)]
+            feature = [[0]]
             for index_dep in range(1, len(sentence) + 1):
                 if index_head != index_dep:
                     f = self.get_feature(sentence, index_dep, index_head)
                 else:
-                    f = np.full(self.num_features(), default)
+                    f = [0]
                 
                 feature.append(f)
 
@@ -240,7 +265,7 @@ class FeatureMapping:
     def train_on_dataset(cls, dataset):
         extractor = FeatureMapping()
         for i in trange(len(dataset)):
-            extractor.get_permutations(dataset[i])
+            extractor.get(dataset[i])
         return extractor
 
     @classmethod
@@ -296,6 +321,10 @@ if __name__ == '__main__':
     print('Check if indexes 1 to d-1 used and unique')
     val = feature.get(sentence)
     feature_dict = feature.feature
+
+    print(" ".join([sentence[i]['form'] for i in range(1, len(sentence)+1)]))
+    pprint(feature_dict)
+    breakpoint()
 
     if None:
         if list(feature_dict[keys[0]].values()) == list(set(feature_dict[keys[0]].values())):
