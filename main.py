@@ -21,13 +21,13 @@ def read_from_pickle(path):
 
 def create_dataset(input_file, extractor, output_file, type='training', num_process=32):
     dataset = ConllDataset(input_file)
+    extractor.frozen = True
 
     batch = []
     train_dataset = []
-    items_per_process = 32
+    items_per_process = 40
     for i, instance in tqdm(enumerate(dataset, start=1), total=len(dataset), desc=f'Extracting features from {type} dataset'):
         batch.append(instance)
-        # This small trick because for each process we have to copy the extractor
         if i % (num_process * items_per_process)  == 0 or i == len(dataset):
             with Pool(num_process) as pool:
                 output = pool.map(extractor.get_permutations, batch, items_per_process)
@@ -43,8 +43,6 @@ def create_dataset(input_file, extractor, output_file, type='training', num_proc
             batch = []
             train_dataset = []
 
-    return train_dataset
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -57,8 +55,8 @@ if __name__ == '__main__':
     parser.add_argument('--train-dataset', type=str)
     parser.add_argument('--dev-input', type=str)
     parser.add_argument('--dev-dataset', type=str)
-    parser.add_argument('--test-input', type=str)
-    parser.add_argument('--test-dataset', type=str)
+    parser.add_argument('--evaluate', type=str)
+    parser.add_argument('--evaluate-output', type=str)
 
     parser.add_argument('--weights', type=str)
     parser.add_argument('--save-model', type=str, default=None)
@@ -68,7 +66,7 @@ if __name__ == '__main__':
     # ==== Feature extractor ====
     if args.train_feature_file:
         print('== Training feature extractor ==')
-        feature_extractor = FeatureMapping.train(args.train_feature_file)
+        feature_extractor = FeatureMapping.train(args.train_feature_file, args.num_process)
         FeatureMapping.save(feature_extractor, args.save_extractor)
     if args.extractor:
         feature_extractor = FeatureMapping.load(args.extractor)
@@ -86,29 +84,26 @@ if __name__ == '__main__':
             create_dataset(args.train_input, feature_extractor, args.train_dataset, 'training', args.num_process)
         if args.dev_input:
             create_dataset(args.dev_input, feature_extractor, args.dev_dataset, 'development', args.num_process)
-        if args.test_input:
-            pass
-            # test_dataset = get_test_dataset(args.test_dataset, feature_extractor, 32)
-            test_dataset = None
-
-            with gzip.open(args.test_dataset,'wb') as stream:
-                pickle.dump(test_dataset,stream,-1)
 
     # == Processing training dataset ==
     if args.train_dataset:
         train_dataset_list = list(read_from_pickle(args.train_dataset))
         train_dataset = [item for dataset_list in train_dataset_list for item in dataset_list]
 
-    dev_dataset = None
-    if args.dev_dataset:
-        dev_dataset_list = list(read_from_pickle(args.dev_dataset))
-        dev_dataset = [item for dataset_list in dev_dataset_list for item in dataset_list]
+        dev_dataset = None
+        if args.dev_dataset:
+            dev_dataset_list = list(read_from_pickle(args.dev_dataset))
+            dev_dataset = [item for dataset_list in dev_dataset_list for item in dataset_list]
+
+        model.train(train_dataset, dev_dataset, epoch=10, eval_interval=200, learning_rate=1, lambda_val = 0.004, save_folder=args.save_model)
+
+    # == Running evaluation ==
+    if args.evaluate:
+        dataset = ConllDataset(args.evaluate)
+
+        for i, instance in tqdm(enumerate(dataset, start=1), total=len(dataset), desc=f'Running evaluation'):
+            x = feature_extractor.get_permutations(instance)
+            predicted_tree = model.predict(x)
+            dataset[i].set_arcs(predicted_tree)
         
-    if args.test_dataset:
-        with open(args.test_dataset,'rb') as stream:
-            dataset = pickle.load(stream)
-            test_dataset = feature_extractor.features_to_tensors(dataset)
-
-
-    model.train(train_dataset, dev_dataset, epoch=40, eval_interval=500, learning_rate=1, save_folder=args.save_model)
-
+        dataset.write(filepath=args.evaluate_output)

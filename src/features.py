@@ -5,13 +5,60 @@ from multiprocessing import Pool
 from tqdm.auto import tqdm, trange
 import numpy as np
 
+import torch
+from transformers import AutoTokenizer, AutoModel
+
 from src.dataset import ConllSentence
 from src.dataset import ConllDataset
+
+class BertMapping:
+    def __init__(self, model) -> None:
+        self.tokenizer = AutoTokenizer.from_pretrained(model)
+        self.model = AutoModel.from_pretrained(model, output_hidden_states=True)
+
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        self.model.eval()
+        self.model.to(self.device)
+
+    def get_features(self, sentence):
+        sentence= sentence.strip() # Remove trailing characters
+        line = '[CLS] ' + line + ' [SEP]'
+
+        tokenized_text = self.tokenizer.tokenize(sentence, is_split_into_words=True)
+        indexed_tokens = self.tokenizer.convert_tokens_to_ids(tokenized_text)
+
+        # Convert inputs to PyTorch tensors
+        tokens_tensor = torch.tensor([indexed_tokens]).to(self.device)
+
+        with torch.no_grad():
+            output = self.model(tokens_tensor)
+            top_hidden_states = output.last_hidden_state
+        
+        return top_hidden_states
+
+
+    def create(self, dataset_file, output_file, type='training'):
+        dataset = ConllDataset(dataset_file)
+        save_dataset = []
+        for i, instance in tqdm(enumerate(dataset, start=1), total=len(dataset), desc=f'Extracting features from {type} dataset'):
+            output = self.get_features(instance)
+            save_dataset.append([output, instance.get_arcs()])
+
+        with gzip.open(output_file,'ab') as stream:
+            pickle.dump(save_dataset, stream)
+
+
+    def load(self, input_file):
+        pass
+
 
 
 class FeatureMapping:
     def __init__(self) -> None:
         self.feature_extractors = {
+            'hshape': self.hshape,
+            'dshape': self.dshape,
             'hform': self.hform,
             'hpos': self.hpos,
             'dform': self.dform,
@@ -19,6 +66,9 @@ class FeatureMapping:
             'hform, hpos': self.hform_pos,
             'dform, dpos': self.dform_pos,
             'hform, dform': self.hform_dform,
+            'hlemma, dlemma': self.hlemma_dlemma,
+            'hlemma, dpos': self.hlemma_dpos,
+            'hpos, dlemma': self.hpos_dlemma,
             'hform, dpos': self.hform_dpos,
             'hpos, dform': self.hpos_dform,
             'hpos, dpos': self.hpos_dpos,
@@ -48,11 +98,35 @@ class FeatureMapping:
 
     def direction(self, sentence, index_dep, index_head) -> str:
         if index_dep < index_head:
-            return 'right'
-        else:
             return 'left'
+        else:
+            return 'right'
     
-    
+    def shape(self, term):
+        shape = ''
+        for char in term:
+            if char.isupper():
+                shape += 'X'
+            elif char.islower():
+                shape += 'x'
+            elif char.isdigit():
+                shape += 'd'
+            elif char in ('(', ')', '[', ']', '{', '}'):
+                shape += 'b'
+            elif char in (',', '.', ';', ':', '?', '!', "'", '"'):
+                shape += char
+            else:
+                shape += 'c'
+        return shape
+
+    def hshape(self, sentence, index_dep, index_head) -> str:
+        form = self.hform(sentence, index_dep, index_head)
+
+        if form != '__NULL__' and form != 'ROOT':
+            return self.shape(form)
+        else:
+            form
+
     def hform(self, sentence, index_dep, index_head) -> str:
         if index_head < 0 or len(sentence) < index_head:
             form = '__NULL__'
@@ -60,6 +134,16 @@ class FeatureMapping:
             form = 'ROOT'
         else:
             form = sentence[index_head]['form']
+
+        return form
+
+    def hlemma(self, sentence, index_dep, index_head) -> str:
+        if index_head < 0 or len(sentence) < index_head:
+            form = '__NULL__'
+        elif index_head == 0:
+            form = 'ROOT'
+        else:
+            form = sentence[index_head]['lemma']
 
         return form
 
@@ -81,6 +165,24 @@ class FeatureMapping:
 
         return form
 
+    def dshape(self, sentence, index_dep, index_head) -> str:
+        form = self.dform(sentence, index_dep, index_head)
+
+        if form != '__NULL__':
+            return self.shape(form)
+        else:
+            form
+    
+    
+
+    def dlemma(self, sentence, index_dep, index_head) -> str:
+        if index_dep <= 0 or len(sentence) < index_dep:
+            form = '__NULL__'
+        else:
+            form = sentence[index_dep]['lemma']
+
+        return form
+
     def dpos(self, sentence, index_dep, index_head) -> str:
         if index_dep <= 0 or len(sentence) < index_dep:
             pos = '__NULL__'
@@ -92,84 +194,100 @@ class FeatureMapping:
     # HELPER
     def hform_pos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.hpos(*params)}'
+        return f'{self.hform(*params)} {self.hpos(*params)}'
 
     # HELPER
     def dform_pos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.dform(*params)}+{self.dpos(*params)}'
+        return f'{self.dform(*params)} {self.dpos(*params)}'
 
     def hform_dpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.dpos(*params)}'
+        return f'{self.hform(*params)} {self.dpos(*params)}'
 
     def hpos_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hpos(*params)}+{self.dform(*params)}'
+        return f'{self.hpos(*params)} {self.dform(*params)}'
 
     def hform_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.dform(*params)}'
+        return f'{self.hform(*params)} {self.dform(*params)}'
+
+    def hlemma_dlemma(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hlemma(*params)} {self.dlemma(*params)}'
+
+    def hlemma_dpos(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hlemma(*params)} {self.dpos(*params)}'
+
+    def hpos_dlemma(self, sentence, index_dep, index_head) -> str:
+        params = (sentence, index_dep, index_head)
+        return f'{self.hpos(*params)} {self.dlemma(*params)}'
 
     def hpos_dpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hpos(*params)}+{self.dpos(*params)}'
+        return f'{self.hpos(*params)} {self.dpos(*params)}'
 
     def hformpos_dformpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform_pos(*params)}+{self.dform_pos(*params)}'
+        return f'{self.hform_pos(*params)} {self.dform_pos(*params)}'
 
     def hformpos_dform(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform_pos(*params)}+{self.dform(*params)}'
+        return f'{self.hform_pos(*params)} {self.dform(*params)}'
 
     def hformpos_dpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform_pos(*params)}+{self.dpos(*params)}'
+        return f'{self.hform_pos(*params)} {self.dpos(*params)}'
 
     def hform_dformpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hform(*params)}+{self.dform_pos(*params)}'
+        return f'{self.hform(*params)} {self.dform_pos(*params)}'
 
     def hpos_dformpos(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
-        return f'{self.hpos(*params)}+{self.dform_pos(*params)}'
+        return f'{self.hpos(*params)} {self.dform_pos(*params)}'
 
     def hpos_next_dpos_prev(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep - 1, index_head + 1)
-        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
+        return f'{self.hpos(*params)} {self.hpos(*params_neighbors)} {self.dpos(*params)} {self.dpos(*params_neighbors)}'
         
     def hpos_prev_dpos_next(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep+1, index_head-1)
-        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
+        return f'{self.hpos(*params)} {self.hpos(*params_neighbors)} {self.dpos(*params)} {self.dpos(*params_neighbors)}'
 
     def hpos_next_dpos_next(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep+1, index_head+1)
-        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
+        return f'{self.hpos(*params)} {self.hpos(*params_neighbors)} {self.dpos(*params)} {self.dpos(*params_neighbors)}'
 
     def hpos_prev_dpos_prev(self, sentence, index_dep, index_head) -> str:
         params = (sentence, index_dep, index_head)
         params_neighbors = (sentence, index_dep-1, index_head-1)
-        return f'{self.hpos(*params)}+{self.hpos(*params_neighbors)}+{self.dpos(*params)}+{self.dpos(*params_neighbors)}'
+        return f'{self.hpos(*params)} {self.hpos(*params_neighbors)} {self.dpos(*params)} {self.dpos(*params_neighbors)}'
+    
 
     def between_pos(self, sentence, index_dep, index_head) -> str:
         if index_dep < index_head:
-            return f'between pos: {"+".join([self.dpos(sentence, i, 0) for i in range(index_dep, index_head+1)])}'
+            val = " ".join([self.hpos(sentence, 0, i) for i in range(index_dep+1, index_head)])
         else:
-            return f'between pos: {"+".join([self.hpos(sentence, 0, i) for i in range(index_head, index_dep+1)])}'
+            val = " ".join([self.hpos(sentence, 0, i) for i in range(index_head+1, index_dep)])
+
+        return val if len(val) else "__NULL__"
 
     def between_pos_per(self, sentence, index_dep, index_head) -> list:
-        head_pos = self.hpos(sentence, index_dep, index_head)
-        dep_pos = self.dpos(sentence, index_dep, index_head)
         start, end = (index_head, index_dep) if index_head < index_dep else (index_dep, index_head)
 
         features = []
-        for i in range(start, end+1):
+        for i in range(start+1, end):
             between_pos = self.dpos(sentence, i, 0)
-            features.append(f'between pos: {head_pos}+{between_pos}+{dep_pos}')
+            features.append(f'between pos: {between_pos}')
+
+        if len(features) == 0:
+            features = ['between pos: __NULL__']
         
         return features
 
@@ -190,37 +308,23 @@ class FeatureMapping:
                 continue
 
             value = str(func(sentence, index_dep, index_head)) 
-            values = [
-                value,
-                value + f'+{index_head},{index_dep}', # Add position + direction
-                value + f'+{self.distance(sentence, index_dep, index_head)}', # Add distance
-                value + f'+{self.direction(sentence, index_dep, index_head)}', # Add direction
-                value + f'+{len(sentence)}' # Sentence length
-            ]
-
-            for value in values:
-                name_value = f'{name}: {str(value)}'
-
-                if not self.frozen and name_value not in self.feature:
-                    # Set index for feature
-                    self.feature[name_value] += len(self.feature)
-
-                feature.append(self.feature.get(name_value, 0))
-
-        for value_name in self.between_pos_per(sentence, index_dep, index_head):
-            values = [
-                value_name,
-                value_name + f'+{index_head},{index_dep}', # Add position + direction
-                value_name + f'+{self.distance(sentence, index_dep, index_head)}', # Add distance
-                value_name + f'+{self.direction(sentence, index_dep, index_head)}', # Add direction
-                value_name + f'+{len(sentence)}' # Sentence length
-            ]
+            value += f' {self.distance(sentence, index_dep, index_head)} {self.direction(sentence, index_dep, index_head)}'
+            name_value = f'{name}: {str(value)}'
 
             if not self.frozen and name_value not in self.feature:
                 # Set index for feature
                 self.feature[name_value] += len(self.feature)
 
             feature.append(self.feature.get(name_value, 0))
+
+        for value_name in self.between_pos_per(sentence, index_dep, index_head):
+            value_name += f' {self.distance(sentence, index_dep, index_head)} {self.direction(sentence, index_dep, index_head)}'
+
+            if not self.frozen and value_name not in self.feature:
+                # Set index for feature
+                self.feature[value_name] += len(self.feature)
+
+            feature.append(self.feature.get(value_name, 0))
 
         return feature
         
@@ -301,9 +405,11 @@ class FeatureMapping:
 
     @classmethod
     def load(cls, infile):
+        print('Read extractor from:', infile)
         with gzip.open(infile,'rb') as stream:
             featmap = pickle.load(stream)
 
+        print('Finished reading extractor.')
         return featmap
 
 
@@ -317,14 +423,14 @@ if __name__ == '__main__':
 
     # First sanity check
     # 1) Get all indexes from 1 to d-1
-    sentence = conll_dataset[0]
+    sentence = conll_dataset[10]
     print('Check if indexes 1 to d-1 used and unique')
-    val = feature.get(sentence)
+    val = feature.get_permutations(sentence)
+    breakpoint()
     feature_dict = feature.feature
 
     print(" ".join([sentence[i]['form'] for i in range(1, len(sentence)+1)]))
-    pprint(feature_dict)
-    breakpoint()
+    pprint({v:k for k, v in feature_dict.items()})
 
     if None:
         if list(feature_dict[keys[0]].values()) == list(set(feature_dict[keys[0]].values())):

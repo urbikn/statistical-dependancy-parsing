@@ -9,6 +9,13 @@ class ConllSentence():
         self.sentence = dataframe
         self.sentence.set_index('id', inplace=True)
 
+    def set_arcs(self, arcs):
+        # Arcs to be sorted 1->N
+        arcs.sort(key=lambda x: x[1])
+        for arc in arcs:
+            head, dep = arc
+            self.sentence.loc[arc[dep], 'head']  = head
+
     def get_arcs(self):
         heads = self.sentence['head'].to_list()
         arcs = [[head, dep] for dep, head in enumerate(heads, start=1)]
