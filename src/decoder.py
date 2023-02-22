@@ -9,12 +9,24 @@ class CLE():
     def __init__(self, verbose=False, inf=np.inf):
         self.__INF = inf
         self.verbose = verbose
-        self.history = {}
         
+
+    def reverse_graph(self, graph):
+        '''Reverses the graph so that graph[head][dep] -> graph[dep][head]'''
+        reversed_graph = {}
+        for head in graph.keys():
+            for dep in graph[head].keys():
+                if dep not in reversed_graph.keys():
+                    reversed_graph[dep]={}
+
+                reversed_graph[dep][head] = graph[head][dep]
+
+        return reversed_graph
+
 
     def __find_max_pairs(self, graph):
         '''Find connections that with largest weight for each node'''
-        reversed_graph = self.__reverse_graph(graph)
+        reversed_graph = self.reverse_graph(graph)
 
         max_graph = {}
         for dep in reversed_graph:
@@ -22,7 +34,7 @@ class CLE():
             max_node = None
 
             for head in reversed_graph[dep]:
-                if reversed_graph[dep][head] > max_score:
+                if reversed_graph[dep][head] >= max_score:
                     max_score = reversed_graph[dep][head]
                     max_node = head
             
@@ -33,33 +45,6 @@ class CLE():
 
         return max_graph
     
-    def s__find_max_pairs(self, graph):
-        '''Find connections that with largest weight for each node'''
-        reversed_graph = self.__reverse_graph(graph)
-
-        index_pairs = {}
-        for node, edges in reversed_graph.items():
-            head_node = max(edges, key=edges.get)
-            index_pairs[node] = head_node
-
-        max_graph = {}
-        for dep, head in index_pairs.items():
-            max_graph[head] = {dep: graph[head][dep]}
-
-        return max_graph
-
-
-    def __reverse_graph(self, graph):
-        '''Return the reversed graph where g[dst][src]=G[src][dst]'''
-        reversed_graph = {}
-        for head in graph.keys():
-            for dep in graph[head].keys():
-                if dep not in reversed_graph.keys():
-                    reversed_graph[dep]={}
-
-                reversed_graph[dep][head] = graph[head][dep]
-
-        return reversed_graph
 
     def __matrix_to_graph(self, scores):
         '''Transform adjacency matrix into dictionary, where V= {start node: {end node: cost}}'''
@@ -352,12 +337,13 @@ if __name__ == '__main__':
         return True
 
     def test4():
-        np.random.seed(0)
-        size = 5
+        np.random.seed(55)
+        size = 7
         scores = np.random.randint(0, 100, (size, size)).astype(float)
         scores[:, 0] = -np.Inf
         scores[np.diag_indices_from(scores)] = -np.Inf
-        answer = [[2, 1], [3, 2], [0, 3], [3, 4]]
+        answer = [[2, 1], [6, 2], [0, 3], [3, 4], [3, 5], [3, 6]]
+
 
         cle = CLE()
         output = cle.decode(scores)
@@ -398,7 +384,6 @@ if __name__ == '__main__':
         return True
 
     for test in [test1, test2, test3, test4, test5, test6]:
-    # for test in [test1, test4]:
         result = test()
         if not result:
             exit()

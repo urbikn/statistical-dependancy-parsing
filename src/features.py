@@ -104,6 +104,9 @@ class FeatureMapping:
     
     def shape(self, term):
         shape = ''
+        if not isinstance(term, str):
+            return ''
+
         for char in term:
             if char.isupper():
                 shape += 'X'
@@ -330,7 +333,7 @@ class FeatureMapping:
         
 
     def get(self, sentence: ConllSentence):
-        '''Get features of all head->dependant's in the sentence.
+        '''Get features of all head->dependants in the sentence.
         
         The features are indexes retrieved from the self.feature dictionary.
         '''
@@ -369,7 +372,7 @@ class FeatureMapping:
     def train_on_dataset(cls, dataset):
         extractor = FeatureMapping()
         for i in trange(len(dataset)):
-            extractor.get(dataset[i])
+            extractor.get_permutations(dataset[i])
         return extractor
 
     @classmethod
@@ -379,7 +382,16 @@ class FeatureMapping:
 
         # Splits dataset into subsets for multiprocessing
         step_size = int(len(dataset) / num_process)
-        subdataset = [dataset[i:i+step_size] for i in range(0, len(dataset) + 1 - step_size, step_size)]
+        subdataset = []
+        for i in range(num_process):
+            index = i * step_size
+
+            if i == num_process - 1: # This is just to get all the remaning values in case the step_size isn't perfect
+                subdata = dataset[index:]
+            else:
+                subdata = dataset[index:index + step_size]
+
+            subdataset.append(subdata)
 
         # Use multiprocessing to extract features quicker
         # Basically it splits the dataset into processes to extract unknown

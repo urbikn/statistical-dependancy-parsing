@@ -95,15 +95,15 @@ if __name__ == '__main__':
             dev_dataset_list = list(read_from_pickle(args.dev_dataset))
             dev_dataset = [item for dataset_list in dev_dataset_list for item in dataset_list]
 
-        model.train(train_dataset, dev_dataset, epoch=10, eval_interval=200, learning_rate=1, lambda_val = 0.004, save_folder=args.save_model)
+        model.train(train_dataset, dev_dataset, epoch=10, eval_interval=200, learning_rate=1, lambda_val = 0.001, save_folder=args.save_model)
 
     # == Running evaluation ==
     if args.evaluate:
         dataset = ConllDataset(args.evaluate)
 
-        for i, instance in tqdm(enumerate(dataset, start=1), total=len(dataset), desc=f'Running evaluation'):
+        for i, instance in tqdm(enumerate(dataset), total=len(dataset), desc=f'Running evaluation'):
             x = feature_extractor.get_permutations(instance)
             predicted_tree = model.predict(x)
-            dataset[i].set_arcs(predicted_tree)
+            dataset.set_arcs(sentence_index=i, arcs=predicted_tree)
         
         dataset.write(filepath=args.evaluate_output)

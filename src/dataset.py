@@ -2,6 +2,8 @@ import csv
 import pandas as pd
 import numpy as np
 
+pd.options.mode.chained_assignment = None  # default='warn'
+
 class ConllSentence():
     column_names = ['id', 'form', 'lemma', 'pos', 'xpos', 'morph.', 'head', 'rel', 'deps', 'misc']
 
@@ -12,9 +14,10 @@ class ConllSentence():
     def set_arcs(self, arcs):
         # Arcs to be sorted 1->N
         arcs.sort(key=lambda x: x[1])
+
         for arc in arcs:
             head, dep = arc
-            self.sentence.loc[arc[dep], 'head']  = head
+            self.sentence.loc[dep, 'head']  = head
 
     def get_arcs(self):
         heads = self.sentence['head'].to_list()
@@ -52,7 +55,7 @@ class ConllDataset():
         self.dataset = pd.read_csv(**pandas_args)
         self.sentence_indexes = self.dataset[self.dataset.iloc[:, 0] == 1].index.to_list()
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> ConllSentence:
         # Get the start and end index of the sentence in the Dataframe
         begin_index = self.sentence_indexes[key]
         if key >= 0 and len(self) > key + 1:
@@ -66,12 +69,27 @@ class ConllDataset():
 
         return sentence
 
+    def __setitem__(self, key, sentence: ConllSentence):
+        # Get the start and end index of the sentence in the Dataframe
+        begin_index = self.sentence_indexes[key]
+        if key >= 0 and len(self) > key + 1:
+            # -1 to not already include a token of the next sentence
+            end_index = self.sentence_indexes[key + 1]
+        else:
+            end_index = len(self.dataset)
+
+        self.dataset[begin_index: end_index].update(sentence.sentence)
+
     def __len__(self):
         return len(self.sentence_indexes)
 
     def __iter__(self):
         for i in range(len(self)):
             yield self[i]
+
+    def set_arcs(self, sentence_index, arcs):
+        sentence = self[sentence_index]
+        sentence.set_arcs(arcs)
 
 
     def write(self, filepath, add_columns=False):
