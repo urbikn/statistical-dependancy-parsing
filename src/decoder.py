@@ -2,15 +2,17 @@ import numpy as np
 from pprint import pprint
 import copy
 
-class CLE():
-    """Class implements the graph-based parsing algorithm Chu-Liu-Edmonds.
+class CLE_n():
+    """The class implements the Chu-Liu-Edmonds algorithm, which is a graph-based parsing algorithm used to
+    find the maximum spanning tree of a directed graph.
+
+    The argument 'verbose' will print-out all intermediate steps that the algorithm makes.
     """
 
     def __init__(self, verbose=False, inf=np.inf):
         self.__INF = inf
         self.verbose = verbose
         
-
     def reverse_graph(self, graph):
         '''Reverses the graph so that graph[head][dep] -> graph[dep][head]'''
         reversed_graph = {}
@@ -24,7 +26,7 @@ class CLE():
         return reversed_graph
 
 
-    def __find_max_pairs(self, graph):
+    def find_max_pairs(self, graph):
         '''Find connections that with largest weight for each node'''
         reversed_graph = self.reverse_graph(graph)
 
@@ -46,7 +48,7 @@ class CLE():
         return max_graph
     
 
-    def __matrix_to_graph(self, scores):
+    def matrix_to_graph(self, scores):
         '''Transform adjacency matrix into dictionary, where V= {start node: {end node: cost}}'''
         graph = {}
         for i_start, row in enumerate(scores):
@@ -58,7 +60,7 @@ class CLE():
         
         return graph
 
-    def __find_cycle(self, graph):
+    def find_cycle(self, graph):
         can_visit = set(graph.keys())
         while can_visit:
             stack = [can_visit.pop()]
@@ -81,56 +83,6 @@ class CLE():
                 else:
                     stack.pop()
         return None 
-        for start in graph:
-            visited=[]
-            stack = [start]
-            while stack:
-                n = stack.pop()
-                if n in visited:
-                    prev_node, node = n, next(iter(graph[n]))
-                    cycle = {prev_node: {node: graph[prev_node][node]}}
-
-                    while node != n:
-                        prev_node, node = node, next(iter(graph[node]))
-                        cycle[prev_node] = {node: graph[prev_node][node]}
-                
-                    return cycle
-                visited.append(n)
-                if n in graph:
-                    stack.extend(list(graph[n].keys()))
-        return None
-
-    def s__find_cycle(self, graph):
-        '''Given a list of arcs find a cycle'''
-        visited = set()
-        for head in graph:
-            # Already visited node
-            if head in visited:
-                continue
-
-            path = {head}
-            dep = next(iter(graph[head]))
-
-            # Start going through the graph and creating a path
-            while dep in graph and dep not in visited and dep not in path:
-                path.add(dep)
-                dep = next(iter(graph[dep]))
-
-            # If we already went through this node, we have a cycle
-            if dep in path:
-                prev_node, node = dep, next(iter(graph[dep]))
-                cycle = {prev_node: {node: graph[prev_node][node]}}
-
-                while node != dep:
-                    prev_node, node = node, next(iter(graph[node]))
-                    cycle[prev_node] = {node: graph[prev_node][node]}
-                
-                return cycle
-            
-            for node in path:
-                visited.add(node)
-
-        return None
 
     def contract(self, graph, cycle):
         '''Contracts the cycle by creating new node and updating new graph'''
@@ -234,11 +186,11 @@ class CLE():
 
 
     def __decode_graph(self, graph):
-        max_index_pairs = self.__find_max_pairs(graph)
+        max_index_pairs = self.find_max_pairs(graph)
         if self.verbose:
             print('[decode] Max index pairs:', max_index_pairs)
 
-        cycle = self.__find_cycle(max_index_pairs)
+        cycle = self.find_cycle(max_index_pairs)
         if self.verbose:
             print('[decode] Cycle found:', cycle)
 
@@ -268,7 +220,7 @@ class CLE():
 
 
     def decode(self, scores):
-        graph = self.__matrix_to_graph(scores)
+        graph = self.matrix_to_graph(scores)
 
         max_graph = self.__decode_graph(graph)
 
@@ -290,7 +242,7 @@ if __name__ == '__main__':
         ])
         answer = [[2, 3], [0, 2], [2, 1]]
 
-        cle = CLE()
+        cle = CLE_n()
         output = cle.decode(scores)
 
         if sorted(output, key=lambda x: x[1]) != sorted(answer, key=lambda x: x[1]):
@@ -308,7 +260,7 @@ if __name__ == '__main__':
         ])
         answer =  [[0, 2], [2, 3], [3, 1]]
 
-        cle = CLE()
+        cle = CLE_n()
         output = cle.decode(scores)
 
         if sorted(output, key=lambda x: x[1]) != sorted(answer, key=lambda x: x[1]):
@@ -326,7 +278,7 @@ if __name__ == '__main__':
         ])
         answer = [[2, 1], [0, 2], [2, 3]]
 
-        cle = CLE()
+        cle = CLE_n()
         output = cle.decode(scores)
 
         if sorted(output, key=lambda x: x[1]) != sorted(answer, key=lambda x: x[1]):
@@ -345,7 +297,7 @@ if __name__ == '__main__':
         answer = [[2, 1], [6, 2], [0, 3], [3, 4], [3, 5], [3, 6]]
 
 
-        cle = CLE()
+        cle = CLE_n()
         output = cle.decode(scores)
 
         if sorted(output, key=lambda x: x[1]) != sorted(answer, key=lambda x: x[1]):
@@ -360,7 +312,7 @@ if __name__ == '__main__':
         scores[:, 0] = -np.Inf
         scores[np.diag_indices_from(scores)] = -np.Inf
 
-        cle = CLE()
+        cle = CLE_n()
         output = cle.decode(scores)
         if output == None or len(output) != scores.shape[0] - 1:
             print('Test 5 failed')
@@ -375,7 +327,7 @@ if __name__ == '__main__':
             scores[np.diag_indices_from(scores)] = -np.Inf
 
             try:
-                cle = CLE()
+                cle = CLE_n()
                 cle.decode(scores)
             except:
                 print('Test 5 failed')

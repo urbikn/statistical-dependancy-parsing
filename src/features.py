@@ -8,8 +8,6 @@ import numpy as np
 from src.dataset import ConllSentence
 from src.dataset import ConllDataset
 
-
-
 class FeatureMapping:
     ''' Class that defines feature templates and implements feature extraction from input data using these templates.
     '''

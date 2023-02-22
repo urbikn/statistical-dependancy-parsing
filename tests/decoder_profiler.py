@@ -1,13 +1,13 @@
 import cProfile, pstats
 import numpy as np
-from decoder import CLE
+import src.decoder as decoder
 
 def run_100_sentence():
     scores = np.random.randint(0, 30, (100,100)).astype(float)
     scores[:, 0] = -np.Inf
     scores[np.diag_indices_from(scores)] = -np.Inf
 
-    cle = CLE()
+    cle = decoder.CLE_n()
     cle.decode(scores)
 
 def run_200_sentence():
@@ -15,7 +15,7 @@ def run_200_sentence():
     scores[:, 0] = -np.Inf
     scores[np.diag_indices_from(scores)] = -np.Inf
 
-    cle = CLE()
+    cle = decoder.CLE_n()
     cle.decode(scores)
 
 if __name__ == '__main__':
