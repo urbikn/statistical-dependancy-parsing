@@ -64,7 +64,7 @@ This command will evaluate the model on the specified test set and output the re
 
 ## Feature Templates
 
-The feature templates from the `features.py` file are as follows:
+The feature templates from the `features.py` file which are a modification of the feature-set from [McDonald et al. 2015](https://www.seas.upenn.edu/~strctlrn/bib/PDF/dependencyACL2005.pdf) are as follows:
 
 | Feature Template | Description |
 | --- | --- |
@@ -94,3 +94,5 @@ The feature templates from the `features.py` file are as follows:
 | `hpos, dpos, hpos-1, dpos-1` | The POS tag of the head word, the POS tag of the dependent word, and the POS tag of the previous word before both head and dependent |
 | `hpos [bpos...] dpos` | The sequence of POS tags between the head and the dependent |
 | `hpos bpos dpos` | A POS tag between the head and the dependent -- this goes through each POS tag between and outputs as a feature |
+
+
