@@ -5,56 +5,14 @@ from multiprocessing import Pool
 from tqdm.auto import tqdm, trange
 import numpy as np
 
-import torch
-from transformers import AutoTokenizer, AutoModel
-
 from src.dataset import ConllSentence
 from src.dataset import ConllDataset
-
-class BertMapping:
-    def __init__(self, model) -> None:
-        self.tokenizer = AutoTokenizer.from_pretrained(model)
-        self.model = AutoModel.from_pretrained(model, output_hidden_states=True)
-
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        self.model.eval()
-        self.model.to(self.device)
-
-    def get_features(self, sentence):
-        sentence= sentence.strip() # Remove trailing characters
-        line = '[CLS] ' + line + ' [SEP]'
-
-        tokenized_text = self.tokenizer.tokenize(sentence, is_split_into_words=True)
-        indexed_tokens = self.tokenizer.convert_tokens_to_ids(tokenized_text)
-
-        # Convert inputs to PyTorch tensors
-        tokens_tensor = torch.tensor([indexed_tokens]).to(self.device)
-
-        with torch.no_grad():
-            output = self.model(tokens_tensor)
-            top_hidden_states = output.last_hidden_state
-        
-        return top_hidden_states
-
-
-    def create(self, dataset_file, output_file, type='training'):
-        dataset = ConllDataset(dataset_file)
-        save_dataset = []
-        for i, instance in tqdm(enumerate(dataset, start=1), total=len(dataset), desc=f'Extracting features from {type} dataset'):
-            output = self.get_features(instance)
-            save_dataset.append([output, instance.get_arcs()])
-
-        with gzip.open(output_file,'ab') as stream:
-            pickle.dump(save_dataset, stream)
-
-
-    def load(self, input_file):
-        pass
 
 
 
 class FeatureMapping:
+    ''' Class that defines feature templates and implements feature extraction from input data using these templates.
+    '''
     def __init__(self) -> None:
         self.feature_extractors = {
             'hshape': self.hshape,
@@ -299,9 +257,6 @@ class FeatureMapping:
     def __len__(self) -> int:
         return len(self.feature)
 
-    def num_features(self) -> int:
-        return len(self.feature_extractors)
-
     def get_feature(self, sentence, index_dep, index_head):
         '''Get index (dictionary key storing index) of features for the head->dependant given a sentence.'''
 
@@ -370,6 +325,7 @@ class FeatureMapping:
         
     @classmethod
     def train_on_dataset(cls, dataset):
+        '''Trains the feature extractor on a given dataset and returns the trained feature extractor.'''
         extractor = FeatureMapping()
         for i in trange(len(dataset)):
             extractor.get_permutations(dataset[i])
@@ -377,6 +333,9 @@ class FeatureMapping:
 
     @classmethod
     def train(cls, input_file, num_process=16):
+        '''Trains the FeatureMapping class by extracting features from a given input file using multiprocessing
+        to speed up the feature extraction process.
+        '''
         dataset = list(ConllDataset(input_file))
         extractor = FeatureMapping()
 
@@ -412,11 +371,13 @@ class FeatureMapping:
 
     @classmethod
     def save(cls, obj, outfile):
+        '''Save FeatureMapping object as a gzipped pickle file.'''
         with gzip.open(outfile,'wb') as stream:
             pickle.dump(obj,stream,-1)
 
     @classmethod
     def load(cls, infile):
+        '''Loads a previously saved FeatureMapping object from a gzipped pickle file'''
         print('Read extractor from:', infile)
         with gzip.open(infile,'rb') as stream:
             featmap = pickle.load(stream)
@@ -430,27 +391,12 @@ if __name__ == '__main__':
     conll_dataset = ConllDataset(original_file)
     feature = FeatureMapping()
 
-    #with Pool(16) as pool:
-    #    features = pool.map(feature.get_permutations, list(conll_dataset)[:100])
-
-    # First sanity check
-    # 1) Get all indexes from 1 to d-1
+    print('Train extractor on one sentence permutation and print leanred features')
     sentence = conll_dataset[10]
-    print('Check if indexes 1 to d-1 used and unique')
     val = feature.get_permutations(sentence)
-    breakpoint()
-    feature_dict = feature.feature
-
+    
     print(" ".join([sentence[i]['form'] for i in range(1, len(sentence)+1)]))
-    pprint({v:k for k, v in feature_dict.items()})
-
-    if None:
-        if list(feature_dict[keys[0]].values()) == list(set(feature_dict[keys[0]].values())):
-            print('YES')
-        else:
-            print(feature_dict.values())
-            print('NO')
-
+    pprint({v:k for k, v in feature.feature.items()})
 
     print('\nTrain on multiple sentences and get final feature')
     feature = FeatureMapping()
@@ -460,11 +406,3 @@ if __name__ == '__main__':
 
     sentence = conll_dataset[23]
     feature.frozen = True
-
-    print('Pool')
-    pool_dataset = [conll_dataset[i] for i in range(32)]
-    with Pool(16) as pool:
-        features = pool.map(feature.get_permutations, pool_dataset)
-        features = pool.map(feature.get_permutations, pool_dataset)
-
-    pprint(len(features))
