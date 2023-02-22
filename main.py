@@ -1,6 +1,5 @@
 import argparse
 import pickle
-import gzip
 from tqdm import trange, tqdm
 from multiprocessing import Pool
 
