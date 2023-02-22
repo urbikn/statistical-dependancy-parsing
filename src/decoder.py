@@ -9,9 +9,31 @@ class CLE():
     def __init__(self, verbose=False, inf=np.inf):
         self.__INF = inf
         self.verbose = verbose
+        self.history = {}
         
 
     def __find_max_pairs(self, graph):
+        '''Find connections that with largest weight for each node'''
+        reversed_graph = self.__reverse_graph(graph)
+
+        max_graph = {}
+        for dep in reversed_graph:
+            max_score = -np.Inf
+            max_node = None
+
+            for head in reversed_graph[dep]:
+                if reversed_graph[dep][head] > max_score:
+                    max_score = reversed_graph[dep][head]
+                    max_node = head
+            
+            if max_node not in max_graph:
+                max_graph[max_node] ={}
+            
+            max_graph[max_node][dep] = max_score
+
+        return max_graph
+    
+    def s__find_max_pairs(self, graph):
         '''Find connections that with largest weight for each node'''
         reversed_graph = self.__reverse_graph(graph)
 
@@ -20,7 +42,11 @@ class CLE():
             head_node = max(edges, key=edges.get)
             index_pairs[node] = head_node
 
-        return index_pairs
+        max_graph = {}
+        for dep, head in index_pairs.items():
+            max_graph[head] = {dep: graph[head][dep]}
+
+        return max_graph
 
 
     def __reverse_graph(self, graph):
@@ -47,140 +73,179 @@ class CLE():
         
         return graph
 
-    def __find_cycle(self, index_pairs):
-        for node in index_pairs.keys():
-            path = [node]
+    def __find_cycle(self, graph):
+        can_visit = set(graph.keys())
+        while can_visit:
+            stack = [can_visit.pop()]
+            while stack:
+                top = stack[-1]
+                for node in graph.get(top, ()):
+                    if node in stack:
+                        cycle_nodes = stack[stack.index(node):] + [node]
+                        cycle = {}
+                        for i in range(len(cycle_nodes) - 1):
+                            head = cycle_nodes[i]
+                            dep = cycle_nodes[i + 1]
+                            cycle[head] = {dep: graph[head][dep]}
+                        
+                        return cycle
+                    if node in can_visit:
+                        stack.append(node)
+                        can_visit.remove(node)
+                        break
+                else:
+                    stack.pop()
+        return None 
+        for start in graph:
+            visited=[]
+            stack = [start]
+            while stack:
+                n = stack.pop()
+                if n in visited:
+                    prev_node, node = n, next(iter(graph[n]))
+                    cycle = {prev_node: {node: graph[prev_node][node]}}
 
-            while index_pairs.get(path[-1], None): # Looking at the current node
-                head = index_pairs[path[-1]]
-
-                if head == node:
-                    # Return path of cycle with their head:dep connections
-                    return {head:dep for head, dep in zip(path, path[1:] + [node])}
-                elif head in path: # A way to break out if we get into an infinite loop
-                    break
+                    while node != n:
+                        prev_node, node = node, next(iter(graph[node]))
+                        cycle[prev_node] = {node: graph[prev_node][node]}
                 
-                path.append(head)
-        
+                    return cycle
+                visited.append(n)
+                if n in graph:
+                    stack.extend(list(graph[n].keys()))
         return None
 
-    def __resolve(self, graph, cycle):
-        rev_cycle = {v:k for k, v in cycle.items()}
-
-        # Sums scores of the cycle from the graph
-        sum_cycle_scores = sum([graph[head][dep] for head, dep in cycle.items()])
-        cycle_scores = {head:(sum_cycle_scores - graph[dep][head]) for head, dep in cycle.items()}
-
-        # Update scores on old graph
-        for node, arcs in graph.items():
-            # Skip nodes that will be turned into a new node
-            if node in cycle_scores:
+    def s__find_cycle(self, graph):
+        '''Given a list of arcs find a cycle'''
+        visited = set()
+        for head in graph:
+            # Already visited node
+            if head in visited:
                 continue
 
-            for n in arcs.keys():
-                if n in cycle_scores:
-                    arcs[n] += cycle_scores[n]
-        if self.verbose:
-            print('[resolve] New updated graph:')
-            pprint(graph)
+            path = {head}
+            dep = next(iter(graph[head]))
 
+            # Start going through the graph and creating a path
+            while dep in graph and dep not in visited and dep not in path:
+                path.add(dep)
+                dep = next(iter(graph[dep]))
 
-        if self.verbose:
-            print('[resolve] Starting to create new graph.')
+            # If we already went through this node, we have a cycle
+            if dep in path:
+                prev_node, node = dep, next(iter(graph[dep]))
+                cycle = {prev_node: {node: graph[prev_node][node]}}
 
-        # index that will represent the newly created node
-        cycle_node_index = min(cycle_scores.keys())
+                while node != dep:
+                    prev_node, node = node, next(iter(graph[node]))
+                    cycle[prev_node] = {node: graph[prev_node][node]}
+                
+                return cycle
+            
+            for node in path:
+                visited.add(node)
+
+        return None
+
+    def contract(self, graph, cycle):
+        '''Contracts the cycle by creating new node and updating new graph'''
+        new_node_name = max(graph.keys()) + 1
         new_graph = {}
-        for node in graph.keys():
-            new_nodes = graph[node].copy()
+        incoming_original_edge = {}
+        outgoing_original_edge = {}
 
-            max_node_val = -np.Inf
-            for arc in list(new_nodes.keys()):
-                # Get the largest value as connection to new node
-                if arc in cycle_scores:
-                    score = new_nodes.pop(arc)
-
-                    if max_node_val < score:
-                        max_node_val = score
-
-
-            if max_node_val != -np.Inf:
-                new_nodes[cycle_node_index] = max_node_val
-
-            new_graph[node] = new_nodes
-
-
-        new_node = {}
-        for node in cycle.keys():
-            arcs = new_graph.pop(node)
-
-            for n in list(arcs.keys()):
-                # Remove cycle nodes from arcs
-                if n in cycle:
-                    arcs.pop(n)
-                elif n not in new_node or new_node[n] < arcs[n]:
-                    new_node[n] = arcs[n]
-
-        new_graph[cycle_node_index] = new_node
         if self.verbose:
-            print('[resolve] New created graph:')
+            print('[contract] Starting to create new graph.')
+
+        for head in graph.keys():
+            for dep in graph[head].keys():
+                # Edge points to a node in the cycle, so we keep the edge with the largest connection
+                # == Incoming connection to cycle ==
+                if head not in cycle and dep in cycle:
+                    # Create new node in new graph
+                    if head not in new_graph:
+                        new_graph[head] = {}
+                    
+                    # Get new score of connection as sum from cycle
+                    score = graph[head][dep]
+                    prev_node, node = dep, next(iter(cycle[dep]))
+                    while node != dep:
+                        score += graph[prev_node][node]
+                        prev_node, node = node, next(iter(cycle[node]))
+
+                    # Creates 'new node' connection, or, has bigger connection update
+                    if new_node_name not in new_graph[head] or score > new_graph[head][new_node_name]:
+                        new_graph[head][new_node_name] = score
+                        incoming_original_edge[head] = dep
+
+                # Edge from cycle to node, so we keep the edge with the largest weight
+                # == Outgoing connection to cycle ==
+                elif head in cycle and dep not in cycle:
+                    # Create new node in new graph
+                    if new_node_name not in new_graph:
+                        new_graph[new_node_name] = {}
+                    
+                    score = graph[head][dep]
+
+                    # Creates new connection from 'new node', or, has largest connection from 'new node' to node (dep)
+                    if dep not in new_graph[new_node_name] or score > new_graph[new_node_name][dep]:
+                        new_graph[new_node_name][dep] = score
+                        outgoing_original_edge[dep] = head
+
+                # Edge not connected with cycle
+                # == Other edges ==
+                elif head not in cycle and dep not in cycle:
+                    # Create new node in new graph
+                    if head not in new_graph:
+                        new_graph[head] = {}
+
+                    new_graph[head][dep] = graph[head][dep]
+
+        if self.verbose:
+            print('[contract] New created graph:')
             pprint(new_graph)
 
+        return new_graph, new_node_name, incoming_original_edge, outgoing_original_edge
 
-        return graph, new_graph
 
-    def __resolve_cycle(self, new_graph, cycle):
-        for node_c in cycle.keys():
-            for head_g, dep_g in new_graph:
-                if cycle[node_c] == dep_g:
-                    cycle = [[h,d] for h, d in cycle.items() if h != node_c]
-                    resolved_graph = new_graph + cycle
-                    if self.verbose:
-                        print('[resolve cycle] Resolved cycle', cycle)
-                        print('[resolve cycle] Resolved graph')
-                        pprint(resolved_graph)
+    def resolve(self, new_graph, new_node_name, cycle, original_graph, incoming_original, outgoing_original):
+        for head in list(new_graph.keys()):
+            # Find cycle node and resolve it
+            if head != new_node_name:
+                for dep in list(new_graph[head].keys()):
+                    if dep == new_node_name:
+                        # Replace with original node
+                        new_graph[head].pop(dep)
+                        original_dep = incoming_original[head]
+                        new_graph[head][original_dep] = original_graph[head][original_dep]
 
-                    return resolved_graph
+                        # Add nodes from cycle
+                        for head_c in cycle:
+                            # Except for the one that points to the original node
+                            dep_c = next(iter(cycle[head_c]))
+                            if dep_c != original_dep:
+                                if head_c not in new_graph:
+                                    new_graph[head_c] = {}
+
+                                new_graph[head_c][dep_c] = original_graph[head_c][dep_c]
+            # Add all out from cycle
+            else:
+                for dep in list(new_graph[head].keys()):
+                    original_head = outgoing_original[dep]
+                    if original_head not in new_graph:
+                        new_graph[original_head] = {}
+                    
+                    new_graph[original_head][dep] = original_graph[original_head][dep]
+
+        # Clear out new node from graph
+        if new_node_name in new_graph:
+            new_graph.pop(new_node_name)
         
         if self.verbose:
-            print('[resolve cycle] No resolution')
+            print('[resolve] Resolved graph')
+            pprint(new_graph)
+
         return new_graph
-
-    def __resolve_node(self, old_graph, new_graph, old_cycle, index_pairs):
-        resolved_index_pairs = copy.deepcopy(index_pairs)
-
-        # Resolve dep nodes
-        for i, (head_node, dep_node) in enumerate(index_pairs):
-            new_score = new_graph[head_node][dep_node]
-
-            for old_dep_node, old_score in old_graph[head_node].items():
-                # Second condition used in scenario that the old_graph's head_node
-                # Contained the same value as one that's inside the cycle
-                # Or that the dep_node itself is in the cycle, 
-                # then we swap with one in the cycle
-                # === As you can probably guess, this is a  product of debugging
-                if new_score == old_score and \
-                   (old_dep_node not in old_cycle or dep_node in old_cycle):
-                    resolved_index_pairs[i][1] = old_dep_node
-                    break
-
-        # Resolve head nodes
-        for i, (head_node, dep_node) in enumerate(index_pairs):
-            # First see if the head_node was the one from the cycle (meaning it was
-            # reduced to the head_node index)
-            if head_node in old_cycle:
-                #if dep_node not in new_graph[head_node]
-                new_score = new_graph[head_node][dep_node]
-                # Get all nodes in cycle and try to find the one that was used
-                # for the new graph
-                for cycle_node in old_cycle.keys():
-                    # .get() in case the score doesn't even exist in the node
-                    old_score = old_graph[cycle_node].get(dep_node, -1)
-                    if new_score == old_score:
-                        resolved_index_pairs[i][0] = cycle_node
-                        break
-
-        return resolved_index_pairs
 
 
     def __decode_graph(self, graph):
@@ -196,31 +261,38 @@ class CLE():
             if self.verbose:
                 print('[decode] No cycle found. Returning max index pairs.')
 
-            return [[h,d] for d, h in max_index_pairs.items()]
+            return max_index_pairs
         else:
-            old_graph, new_graph = self.__resolve(graph, cycle)
+            new_graph, new_node_name, incoming_original, outgoing_original = self.contract(graph, cycle)
 
             y = self.__decode_graph(copy.deepcopy(new_graph))
             if self.verbose:
-                print('[decode] New graph')
+                print('[decode] New returned graph')
                 pprint(y)
 
-            y_resolved = self.__resolve_node(old_graph, new_graph, cycle, y)
-            if self.verbose:
-                print('[decode] New (resolved) graph')
-                pprint(y_resolved)
+            y_resolved = self.resolve(
+                new_graph=y,
+                new_node_name=new_node_name,
+                cycle=cycle,
+                original_graph=graph,
+                incoming_original=incoming_original,
+                outgoing_original=outgoing_original
+            )
 
-            try:
-                return self.__resolve_cycle(y_resolved, cycle)
-            except Exception as e:
-                print(y_resolved)
-                raise e
+            return y_resolved
 
 
     def decode(self, scores):
         graph = self.__matrix_to_graph(scores)
 
-        return self.__decode_graph(graph)
+        max_graph = self.__decode_graph(graph)
+
+        arcs = []
+        for head in max_graph:
+            for dep in max_graph[head]:
+                arcs.append([head, dep])
+
+        return arcs
         
 
 if __name__ == '__main__':
@@ -236,7 +308,7 @@ if __name__ == '__main__':
         cle = CLE()
         output = cle.decode(scores)
 
-        if output != answer:
+        if sorted(output, key=lambda x: x[1]) != sorted(answer, key=lambda x: x[1]):
             print('Test 1 failed')
             return False
         
@@ -254,14 +326,50 @@ if __name__ == '__main__':
         cle = CLE()
         output = cle.decode(scores)
 
-        if output != answer:
+        if sorted(output, key=lambda x: x[1]) != sorted(answer, key=lambda x: x[1]):
             print('Test 2 failed')
             return False
         
         return True
 
-
     def test3():
+        scores = np.array([
+            [-np.Inf, 47, 64, 67],
+            [-np.Inf, -np.Inf, 83, 21],
+            [-np.Inf, 87, -np.Inf, 88],
+            [-np.Inf, 12, 58, -np.Inf],
+        ])
+        answer = [[2, 1], [0, 2], [2, 3]]
+
+        cle = CLE()
+        output = cle.decode(scores)
+
+        if sorted(output, key=lambda x: x[1]) != sorted(answer, key=lambda x: x[1]):
+            print(output)
+            print('Test 3 failed')
+            return False
+        
+        return True
+
+    def test4():
+        np.random.seed(0)
+        size = 5
+        scores = np.random.randint(0, 100, (size, size)).astype(float)
+        scores[:, 0] = -np.Inf
+        scores[np.diag_indices_from(scores)] = -np.Inf
+        answer = [[2, 1], [3, 2], [0, 3], [3, 4]]
+
+        cle = CLE()
+        output = cle.decode(scores)
+
+        if sorted(output, key=lambda x: x[1]) != sorted(answer, key=lambda x: x[1]):
+            print('Test 4 failed')
+            return False
+        
+        return True
+
+
+    def test5():
         scores = np.random.randint(0, 30, (10,10)).astype(float)
         scores[:, 0] = -np.Inf
         scores[np.diag_indices_from(scores)] = -np.Inf
@@ -269,12 +377,12 @@ if __name__ == '__main__':
         cle = CLE()
         output = cle.decode(scores)
         if output == None or len(output) != scores.shape[0] - 1:
-            print('Test 3 failed')
+            print('Test 5 failed')
             return False
         
         return True
 
-    def test4():
+    def test6():
         for i in range(100):
             scores = np.random.randint(0, 30, (100,100)).astype(float)
             scores[:, 0] = -np.Inf
@@ -284,13 +392,15 @@ if __name__ == '__main__':
                 cle = CLE()
                 cle.decode(scores)
             except:
-                print('Test 3 failed')
+                print('Test 5 failed')
                 return False
         
         return True
 
-    for test in [test1, test2, test3, test4]:
-        if not test():
-            exit
+    for test in [test1, test2, test3, test4, test5, test6]:
+    # for test in [test1, test4]:
+        result = test()
+        if not result:
+            exit()
         
     print('All tests run successfully')
