@@ -64,7 +64,7 @@ This command will evaluate the model on the specified test set and output the re
 
 ## Feature Templates
 
-The feature templates from the `features.py` file which are a modification of the feature-set from [McDonald et al. 2015](https://www.seas.upenn.edu/~strctlrn/bib/PDF/dependencyACL2005.pdf) are as follows:
+The feature templates from the `features.py` file which are a modification of the feature-set from [McDonald et al. 2015](https://aclanthology.org/P05-1012.pdf) are as follows:
 
 | Feature Template | Description |
 | --- | --- |
