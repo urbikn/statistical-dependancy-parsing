@@ -1,5 +1,5 @@
-# Graph-Based Averaged Perceptron for Statistical Dependency Parsing
-This is a Python implementation of a graph-based averaged perceptron for statistical dependency parsing, using the Chu-Liu-Edmonds algorithm for decoding. The project was tested on training English and German, and is designed to work with .conll06 datasets.
+# Graph-Based Structural Perceptron for Statistical Dependency Parsing
+This is a Python implementation of a graph-based (averaged) structural perceptron for statistical dependency parsing, using the Chu-Liu-Edmonds algorithm for decoding. The project was tested on training English and German, and is designed to work with .conll06 datasets.
 
 ## Project structure
 
@@ -11,7 +11,7 @@ The repository has the following structure:
     - `decoder.py`: implements the graph-based decoder using the Chu-Liu-Edmonds algorithm
     - `evaluation.py`: implements the UAS and LAS evaluation metrics to evaluate performance of the model
     - `features.py`: implements the feature templates used to extract features from the input data
-    - `model.py`: implements the averaged perceptron model used for training and prediction
+    - `model.py`: implements the (averaged) structural perceptron model used for training and prediction
 - `main.py`: main program that loads the datasets and models
 
 ## How to use
