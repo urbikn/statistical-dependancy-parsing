@@ -74,16 +74,16 @@ class AveragePerceptron:
                         progressbar.set_postfix(progressbar_params['postfix'])
 
 
-                    # Run evaluation
-                    uas = self.evaluate(dev_dataset)
-                    progressbar_params['postfix']['UAS_dev'] = uas
-                    progressbar.set_postfix(progressbar_params['postfix'])
+                # Run evaluation
+                uas = self.evaluate(dev_dataset)
+                progressbar_params['postfix']['UAS_dev'] = uas
+                progressbar.set_postfix(progressbar_params['postfix'])
 
-                    # if the model became better, save score and the weights
-                    if best_uas < uas:
-                        best_uas = uas
-                        if save_folder != None:
-                            AveragePerceptron.save(self, f"{save_folder}/perceptron-epoch={e}-eval={np.round(uas, 3)}-lambda={np.round(lambda_val, 3)}.p")
+                # if the model became better, save score and the weights
+                if best_uas < uas:
+                    best_uas = uas
+                    if save_folder != None:
+                        AveragePerceptron.save(self, f"{save_folder}/perceptron-epoch={e}-eval={np.round(uas, 3)}-lambda={np.round(lambda_val, 3)}.p")
                 
 
             # Update weights using cache 
